@@ -1,20 +1,13 @@
 <div align="center">
   <h1 align="center">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="static/assets/images/teable-vertical-dark.png">
-      <img alt="teable logo" height="150" src="static/assets/images/teable-vertical-light.png">
-    </picture>
+    <img alt="Cybernetics logo" height="150" src="apps/nextjs-app/public/images/favicon/favicon-256x256.png">
+    <br>Cybernetics
   </h1>
   <h3 align="center"><strong>Manage Your Data & Connect Your Team</strong></h3>
-  <p>Teable uses a simple, spreadsheet-like interface to create powerful database applications. Collaborate with your team in real-time, and scale to millions of rows
-  <p>Try out Teable using our hosted version at <a href="https://teable.ai">teable.ai</a></p>
+  <p>Cybernetics uses a simple, spreadsheet-like interface to create powerful database applications. Collaborate with your team in real-time, and scale to millions of rows
 </div>
 
-<div align="center">
-<a href="https://trendshift.io/repositories/8516" target="_blank"><img src="https://trendshift.io/api/badge/repositories/8516" alt="teableio%2Fteable | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-</div>
-
-<p align="center">
+<!-- <p align="center">
   <a target="_blank" href="https://teable.ai">Home</a> | <a target="_blank" href="https://help.teable.ai">Help</a> | <a target="_blank" href="https://teable.ai/blog">Blog</a> | <a target="_blank" href="https://teable.ai/templates">Template</a> | <a target="_blank" href="https://help.teable.ai/en/api-doc/token">API</a> | <a target="_blank" href="https://community.teable.ai">Community</a> | <a target="_blank" href="https://twitter.com/teableio">Twitter</a>
 </p>
 
@@ -32,21 +25,15 @@
     <img alt="GitHub top language" src="https://img.shields.io/github/languages/top/teableio/teable?style=flat-square&labelColor=000&color=blue">
   </a>
   <a aria-label="Gurubase" href="https://gurubase.io/g/teable">
-    <img alt="Gurubase" src="https://img.shields.io/badge/Gurubase-Ask%20Teable%20Guru-006BFF" />
+    <img alt="Gurubase" src="https://img.shields.io/badge/Gurubase-Ask%20Cybernetics%20Guru-006BFF" />
   </a>
 </p>
   <h1 align="center">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="static/assets/images/teable-interface-dark.png">
-      <img alt="teable interface" width="100%" src="static/assets/images/teable-interface-light.png">
+      <img alt="Cybernetics interface" width="100%" src="static/assets/images/teable-interface-light.png">
     </picture>
-  </h1>
-
-## Quick Guide
-
-1. Looking for a quick experience? Select a scenario from the [template center](https://app.teable.ai/public/template) and click "Use this template".
-2. Seeking high performance? Try the [1 million rows demo](https://app.teable.ai/share/shrVgdLiOvNQABtW0yX/view) to feel the speed of Teable.
-3. Interested in deploying it yourself? Click [Deploy on Railway](https://railway.app/template/wada5e?referralCode=rE4BjB)
+  </h1> -->
 
 ## ✨Features
 
@@ -111,8 +98,6 @@ More features have been added. See our <a target="_blank" href="https://help.tea
 
 # Structure
 
-[![Open in Gitpod](https://img.shields.io/badge/Open%20In-Gitpod.io-%231966D2?style=for-the-badge&logo=gitpod)](https://gitpod.io/#https://github.com/teableio/teable)
-
 ```
 .
 ├── apps (AGPL 3.0)
@@ -137,24 +122,6 @@ More features have been added. See our <a target="_blank" href="https://help.tea
 cd dockers/examples/standalone/
 docker-compose up -d
 ```
-
-for more details, see [install teable](https://help.teable.ai/en/deploy/docker)
-
-### One Click Deployment
-
-These platforms are easy to deploy with one click and come with free credits.
-
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/wada5e?referralCode=rE4BjB)
-
-[![Deploy on Sealos](https://sealos.io/Deploy-on-Sealos.svg)](https://template.sealos.io/deploy?templateName=teable)
-
-[![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/templates/QF8695)
-
-[![Deploy to RepoCloud](https://d16t0pc4846x52.cloudfront.net/deploylobe.svg)](https://repocloud.io/details/?app_id=273)
-
-[![Deploy on Elestio](https://elest.io/images/logos/deploy-to-elestio-btn.png)](https://elest.io/open-source/teable)
-
-[![Deploy on AlibabaCloud ComputeNest](https://service-info-public.oss-cn-hangzhou.aliyuncs.com/computenest-en.svg)](https://computenest.console.aliyun.com/service/instance/create/default?ServiceName=Teable%20%E7%A4%BE%E5%8C%BA%E7%89%88)
 
 ## Development
 
@@ -203,7 +170,7 @@ pnpm dev
 
 This will start the plugin development server on port 3002.
 
-## Why Teable?
+## Why Cybernetics?
 
 No-code tools have significantly speed up how we get things done, allowing non-tech users to build amazing apps and changing the way many work and live. People like using spreadsheet-like UI to handle their data because it's easy, flexible, and great for team collaboration. They also prefer designing their app screens without being stuck with clunky templates.
 
@@ -226,10 +193,8 @@ Giving non-techy people the ability to create their software sounds exciting. Bu
 - Flexibility to integrate with other software, combining strengths to get the job done.
 - Last, native AI integration to takes usability to the next level.
 
-In essence, Teable isn't just another no-code solution, it's a comprehensive answer to the evolving demands of modern software development, ensuring that everyone, regardless of their technical proficiency, has a platform tailored to their needs.
+In essence, Cybernetics isn't just another no-code solution, it's a comprehensive answer to the evolving demands of modern software development, ensuring that everyone, regardless of their technical proficiency, has a platform tailored to their needs.
 
 # License
 
-Teable Community Edition (CE) is free for self-hosting under the AGPL license. See [./LICENSE](./LICENSE) for details.
-
-Teable Enterprise Edition (EE) includes advanced features such as AI, authority matrix, automation and advanced admin. For detailed information and pricing, please visit [pricing](https://teable.ai/pricing).
+Cybernetics Community Edition (CE) is free for self-hosting under the AGPL license. See [./LICENSE](./LICENSE) for details.
