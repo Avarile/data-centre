@@ -172,12 +172,13 @@ export const ShareBaseContent = ({
     },
   });
 
-  const toAuthorityManage = () => {
-    router.push({
-      pathname: '/base/[baseId]/authority-matrix',
-      query: { baseId },
-    });
-  };
+  // todo: this is disable of the paid function components
+  // const toAuthorityManage = () => {
+  //   router.push({
+  //     pathname: '/base/[baseId]/authority-matrix',
+  //     query: { baseId },
+  //   });
+  // };
 
   const linkListCount = linkList?.length || 0;
   const onBack = () => setTabType(undefined);
@@ -258,7 +259,8 @@ export const ShareBaseContent = ({
           <Trans ns="common" i18nKey={'invite.base.desc'} count={total} components={{ b: <b /> }} />
         }
       />
-      {enabledAuthority && <AuthorityTips onViewDetail={toAuthorityManage} />}
+      {/* todo: this is disable of the components */}
+      {/* {enabledAuthority && <AuthorityTips onViewDetail={toAuthorityManage} />} */}
       <div className="flex flex-col gap-5">
         <InviteEmailButton onClick={() => setTabType('email')} />
         {user?.organization && (
@@ -282,7 +284,10 @@ export const ShareBaseContent = ({
           <CollaboratorsDialog
             title={t('invite.base.baseTitleWithCount', { count: total })}
             alert={
-              enabledAuthority ? <AuthorityTips onViewDetail={toAuthorityManage} /> : undefined
+              enabledAuthority
+                ? 'No Authority'
+                : // <AuthorityTips onViewDetail={toAuthorityManage} />
+                  undefined
             }
             list={collaborators || []}
             total={total}

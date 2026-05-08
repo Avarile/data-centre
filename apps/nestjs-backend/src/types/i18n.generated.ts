@@ -1130,6 +1130,7 @@ export type I18nTranslations = {
                 "thankYouForUsingTeable": string;
                 "pleaseGoToConfiguration": string;
                 "pleaseContactAdmin": string;
+                "thankYouForUsingCybernetics": string;
             };
             "configuration": {
                 "title": string;
@@ -1548,6 +1549,7 @@ export type I18nTranslations = {
                 "verifyingDescription": string;
                 "verifyFailed": string;
                 "tryAgain": string;
+                "tagCyberneticsio": string;
             };
             "error": {
                 "verificationFailed": string;

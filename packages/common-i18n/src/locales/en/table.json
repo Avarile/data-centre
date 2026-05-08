@@ -1074,7 +1074,7 @@
     "noPermission": "You don't have permission to access the database",
     "connectionCountTip": "The maximum number of database connections is <b>{{max}}</b> and the current connections is <b>{{current}}</b>",
     "createFailed": "Please ensure that the PUBLIC_DATABASE_PROXY environment variable is set correctly",
-    "helpLink": "https://help.teable.ai/en/deploy/database-connection"
+    "helpLink": "https://help.cybernetics.ai/en/deploy/database-connection"
   },
   "view": {
     "addRecord": "Add record",
@@ -1098,7 +1098,7 @@
     },
     "crash": {
       "title": "Crash!",
-      "description": "This view is broken. If the refresh still fails, please contact us. support@teable.ai"
+      "description": "This view is broken. If the refresh still fails, please contact us. support@cybernetics.com"
     },
     "addPluginView": "Add plugin view",
     "search": {

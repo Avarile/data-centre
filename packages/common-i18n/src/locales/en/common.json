@@ -101,16 +101,16 @@
     "allTemplatesLoaded": "All templates loaded",
     "createTemplate": "Create template",
     "promptBox": {
-      "placeholder": "Build your business app with Teable",
+      "placeholder": "Build your business app with Cybernetics",
       "start": "Start it",
       "carouselGuides": {
-        "guide1": "Paste receipts → Ask Teable to auto-extract key data",
+        "guide1": "Paste receipts → Ask Cybernetics to auto-extract key data",
         "guide2": "Build an AI CRM with lead & follow-up tables",
-        "guide3": "Paste customer feedback → Ask Teable to find insights & generate reports",
+        "guide3": "Paste customer feedback → Ask Cybernetics to find insights & generate reports",
         "guide4": "Create a project tracker with tasks & deadlines",
-        "guide5": "Paste leads spreadsheet → Ask Teable to build a smart CRM",
+        "guide5": "Paste leads spreadsheet → Ask Cybernetics to build a smart CRM",
         "guide6": "Build a content planner with posts & publish dates",
-        "guide7": "Paste resumes → Ask Teable to organize and shortlist candidates"
+        "guide7": "Paste resumes → Ask Cybernetics to organize and shortlist candidates"
       }
     },
     "useTemplateDialog": {
@@ -250,7 +250,7 @@
       "title": "Profile",
       "tab": "Profile",
       "updatePhoto": "Update photo",
-      "updateNameDesc": "Nickname or first name, however you want to be called in Teable",
+      "updateNameDesc": "Nickname or first name, however you want to be called in Cybernetics",
       "securityTitle": "Account security",
       "email": "Email",
       "password": "Password",
@@ -353,13 +353,13 @@
         "revoke": "Revoke",
         "owner": "Owner by {{user}}",
         "revokeTitle": "Are you sure you want to revoke authorization?",
-        "revokeDesc": "{{name}} will no longer be able to access the Teable API. You cannot undo this action.",
+        "revokeDesc": "{{name}} will no longer be able to access the Cybernetics API. You cannot undo this action.",
         "scopeTitle": "Permissions",
         "scopeDesc": "This application will be able to get the following scopes:"
       },
       "userIntegration": {
         "title": "Connected accounts",
-        "description": "Connect external accounts to authorize Teable to access and sync your resources.",
+        "description": "Connect external accounts to authorize Cybernetics to access and sync your resources.",
         "emptyDescription": "No connected accounts",
         "actions": {
           "reconnect": "Reconnect"
@@ -455,7 +455,7 @@
     "viewGroupingTooltipTitle": "Grouping records",
     "viewGroupingTooltipContent": "Group records by conditions to categorize and organize your dataset within a view.",
     "apiButtonTooltipTitle": "API",
-    "apiButtonTooltipContent": "Access Teable's powerful API with nearly all product features using an <a>Token</a>."
+    "apiButtonTooltipContent": "Access Cybernetics's powerful API with nearly all product features using an <a>Token</a>."
   },
   "token": "Token",
   "poweredBy": "Powered by <0></0>",
@@ -517,9 +517,9 @@
   },
   "help": {
     "title": "Help",
-    "appLink": "https://app.teable.ai",
-    "mainLink": "https://help.teable.ai/en",
-    "apiLink": "https://help.teable.ai/en/api-doc/token"
+    "appLink": "https://app.Cybernetics.ai",
+    "mainLink": "https://help.Cybernetics.ai/en",
+    "apiLink": "https://help.Cybernetics.ai/en/api-doc/token"
   },
   "pagePermissionChangeTip": "Page permissions have been updated. Refresh required.",
   "listEmptyTips": "The list is empty",
@@ -605,7 +605,7 @@
         "translationModel": "Translation model",
         "translationModelDescription": "The translation model to use",
         "chatModel": "Chat model",
-        "chatModelDescription": "The chat model to use, Tips: tool calling is required for teable ai features",
+        "chatModelDescription": "The chat model to use, Tips: tool calling is required for Cybernetics ai features",
         "chatModels": {
           "lg": "Advanced chat model",
           "lgDescription": "For planning, coding, and other complex task scenarios. Recommended: claude-sonnet-4.5",
@@ -855,7 +855,7 @@
             "inaccessible": "Unavailable",
             "urlNotAccessibleWarning": "AI service cannot access attachment URLs. This is common for intranet deployments. Base64 mode has been auto-enabled.",
             "useBase64Mode": "Use Base64 Mode",
-            "base64ModeDescription": "Convert attachments to Base64 before sending (Teable cannot be accessed from the public network)",
+            "base64ModeDescription": "Convert attachments to Base64 before sending (Cybernetics cannot be accessed from the public network)",
             "originChanged": "PUBLIC_ORIGIN has changed",
             "originChangedDesc": "The server address has changed since the last test. Please re-test to verify attachment accessibility."
           },
@@ -922,8 +922,8 @@
       "goToConfiguration": "Go to configuration"
     },
     "tips": {
-      "thankYouForUsingTeable": "Thank you for using teable",
-      "pleaseGoToConfiguration": "Please go to the settings page to complete some initial configurations to enjoy the full functionality and a better user experience of teable",
+      "thankYouForUsingCybernetics": "Thank you for using Cybernetics",
+      "pleaseGoToConfiguration": "Please go to the settings page to complete some initial configurations to enjoy the full functionality and a better user experience of Cybernetics",
       "pleaseContactAdmin": "Please contact the administrator"
     },
     "configuration": {
@@ -952,7 +952,7 @@
         "databaseProxy": {
           "title": "PUBLIC_DATABASE_PROXY environment variable",
           "description": "The <strong>PUBLIC_DATABASE_PROXY</strong> is not configured, the external database connection feature will not be available, please refer to the <a>help document</a>",
-          "href": "https://help.teable.ai/en/deploy/database-connection#enable-external-database-connection"
+          "href": "https://help.Cybernetics.ai/en/deploy/database-connection#enable-external-database-connection"
         },
         "llmApi": {
           "title": "LLM API",
@@ -1100,9 +1100,9 @@
     "sourceAutomationDeleted": "Automation or node deleted",
     "processing": "Processing...",
     "unsubscribeH1": "Confirm unsubscribe?",
-    "unsubscribeH2": "You're about to unsubscribe from future Teable promotions and product updates. Are you sure you want to unsubscribe?",
+    "unsubscribeH2": "You're about to unsubscribe from future Cybernetics promotions and product updates. Are you sure you want to unsubscribe?",
     "subscribeH1": "Confirm subscribe?",
-    "subscribeH2": "You're about to subscribe from future Teable promotions and product updates. Are you sure you want to subscribe?",
+    "subscribeH2": "You're about to subscribe from future Cybernetics promotions and product updates. Are you sure you want to subscribe?",
     "unsubscribeListTip": "The following users in the current base have unsubscribed, you will no longer be able to send them emails. When importing emails, please place the email addresses in the first column, and name the header \"email\".",
     "templates": {
       "resetPassword": {
@@ -1315,7 +1315,7 @@
       "title": "Share a positive review to earn",
       "freeCredits": "1000 free credits",
       "guidelinesTitle": "Sharing checklist",
-      "tagTeableio": "Tag <bold>@teableio</bold>",
+      "tagCyberneticsio": "Tag <bold>@Cyberneticsio</bold>",
       "minCharacters": "Write  <bold>80+</bold> characters review",
       "minFollowers": "Have <bold>10+</bold> followers",
       "limitPerWeek": "500 credits per post, up to 2 posts weekly (X + LinkedIn)",
@@ -1459,7 +1459,7 @@
   "changelog": {
     "newUpdate": "APR 28 UPDATE",
     "title": "New Trigger: When Email Receive (IMAP)",
-    "url": "https://help.teable.ai/en/changelog#apr-28-2026",
+    "url": "https://help.Cybernetics.ai/en/changelog#apr-28-2026",
     "id": "changelog-2026-04-28-new-trigger-when-email-receive-imap"
   }
 }

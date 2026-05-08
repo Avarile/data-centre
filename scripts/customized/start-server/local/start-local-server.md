@@ -11,7 +11,7 @@ Run this once after first checkout, or after schema changes.
 Do NOT use `make switch-db-mode` — it overwrites the env file and spins up its own container.
 
 ```bash
-PRISMA_DATABASE_URL="postgresql://appuser:wxgnA33EQ27Ms6wR97AS0PECYqynWw02@127.0.0.1:9898/appdb?schema=public&statement_cache_size=1" make postgres.mode
+PRISMA_DATABASE_URL="postgresql://appuser:wxgnA33EQ27Ms6wR97AS0PECYqynWw02@127.0.0.1:9898/cybernetics?schema=public&statement_cache_size=1" make postgres.mode
 ```
 
 ##### initial the MinIO buckets:

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BACKUP_FILE="/home/avarile/Documents/dev-ops/postgres/teable_backup.sql"
-CONTAINER="standalone-teable-db-1"
-POSTGRES_USER="example"
-POSTGRES_DB="example"
+BACKUP_FILE="/home/avarile/Documents/dev-ops/infra/teable_backup.sql"
+CONTAINER="infra-postgres-1"
+POSTGRES_USER="avarile"
+POSTGRES_DB="cybernetics"
 
 if [[ ! -f "$BACKUP_FILE" ]]; then
   echo "Error: backup file not found at $BACKUP_FILE"
