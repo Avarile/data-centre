@@ -52,3 +52,5 @@ The repo uses Conventional Commits enforced by commitlint + husky. Here's the fu
   fix(db): handle null pointer in migration
   docs: update README with setup instructions
   feat(ui): add dark mode toggle
+
+  git add . && git commit -m "feat(ui): add dark mode toggle" && git push origin dev

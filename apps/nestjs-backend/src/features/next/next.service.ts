@@ -16,21 +16,34 @@ export class NextService implements OnModuleInit, OnModuleDestroy {
     private readonly cacheService: CacheService<ICacheStore>
   ) {}
 
-  private async startNEXTjs() {
+  private async startNEXTjs(retries = 5, retryDelayMs = 2000) {
     const nodeEnv = this.configService.get<string>('NODE_ENV');
     const port = this.configService.get<number>('PORT');
     const nextJsDir = this.configService.get<string>('NEXTJS_DIR');
-    try {
-      this.server = createServer({
-        dev: nodeEnv !== 'production',
-        port: port,
-        dir: nextJsDir,
-        hostname: 'localhost',
-        turbopack: true,
-      });
-      await this.server.prepare();
-    } catch (error) {
-      this.logger.error(error);
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        this.server = createServer({
+          dev: nodeEnv !== 'production',
+          port: port,
+          dir: nextJsDir,
+          hostname: 'localhost',
+          turbopack: true,
+        });
+        await this.server.prepare();
+        return;
+      } catch (error) {
+        const isLockConflict =
+          error instanceof Error && error.message.includes('Unable to acquire lock');
+        if (isLockConflict && attempt < retries - 1) {
+          this.logger.warn(
+            `Next.js dev lock is held by a previous instance, retrying in ${retryDelayMs}ms... (${attempt + 1}/${retries})`
+          );
+          await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+        } else {
+          this.logger.error(error);
+          return;
+        }
+      }
     }
   }
 
