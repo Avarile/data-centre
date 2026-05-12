@@ -2,14 +2,19 @@
   "$schema": "https://ui.shadcn.com/schema.json",
   "style": "new-york",
   "rsc": true,
+  "tsx": true,
   "tailwind": {
     "config": "tailwind.shadcnui.config.js",
     "css": "./src/styles/global.shadcn.css",
     "baseColor": "gray",
     "cssVariables": true
   },
+  "iconLibrary": "radix",
   "aliases": {
     "components": "components",
     "utils": "@/lib/utils"
+  },
+  "registries": {
+    "@magicui": "https://magicui.design/r/{name}"
   }
 }

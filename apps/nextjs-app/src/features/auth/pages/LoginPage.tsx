@@ -57,6 +57,7 @@ export const LoginPage = (props: { children?: React.ReactNode | React.ReactNode[
           <TeableLogo className="size-8" />
           {brandName}
         </div>
+        {/* the animated background and the text */}
         <DescContent />
         <div className="relative flex flex-1 shrink-0 flex-col items-center justify-center">
           <div className="absolute right-0 top-0 flex h-[4em] items-center justify-end bg-background px-5 lg:h-20">
