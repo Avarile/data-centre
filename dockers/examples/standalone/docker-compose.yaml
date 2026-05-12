@@ -1,7 +1,7 @@
 
 services:
   teable:
-    image: ghcr.io/teableio/teable:latest
+    image: teable:develop
     restart: always
     ports:
       - '3000:3000'

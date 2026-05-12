@@ -26,7 +26,7 @@ const parseDsn = (dsn, label) => {
 
 const migrateWorkspace = async ({ label, packageName, schema }) => {
   console.log(`Running ${label} database migration...`);
-  const result = await $({ cwd: '/app' })`pnpm -F ${packageName} prisma-migrate deploy --schema ${schema}`;
+  const result = await $({ cwd: '/app' })`pnpm -F ${packageName} prisma-migrate-deploy deploy --schema ${schema}`;
   console.log(`${label} database migration completed:`, result);
   return result;
 };

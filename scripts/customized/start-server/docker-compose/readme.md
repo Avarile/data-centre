@@ -1,0 +1,1 @@
+# Run `make build.app` in root folder

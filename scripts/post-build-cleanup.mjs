@@ -49,7 +49,7 @@ try {
   console.log('Deleted Next.js build cache.');
 
   const config = {
-    keepDirList: ['dist', 'node_modules', 'prisma'],
+    keepDirList: ['dist', 'node_modules', 'prisma', 'scripts'],
     keepFileList: [
       'package.json',
       'pnpm-workspace.yaml',
