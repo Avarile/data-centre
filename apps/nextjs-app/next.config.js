@@ -86,6 +86,7 @@ const secureHeaders = createSecureHeaders({
             'https://*.teable.io',
             'https://*.teable.ai',
             'https://*.teable.cn',
+            'https://static.cloudflareinsights.com',
           ],
           frameSrc: ["'self'", 'blob:', '*'],
           connectSrc: [
@@ -95,6 +96,7 @@ const secureHeaders = createSecureHeaders({
             'https://*.teable.ai',
             'https://*.teable.cn',
             'https://*.clarity.ms',
+            'https://cloudflareinsights.com',
           ],
           mediaSrc: ["'self'", 'https:', 'http:', 'data:'],
           imgSrc: ["'self'", 'https:', 'http:', 'data:'],
