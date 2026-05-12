@@ -187,12 +187,12 @@ docker.images:
 build.app:
 	@zx --version || pnpm add -g zx; \
   	zx scripts/build-image.mjs --file=dockers/teable/Dockerfile \
-		  --tag=teable:develop
+		  --tag=cybernetics:develop
 
 build.db-migrate:
 	@zx --version || pnpm add -g zx; \
   	zx scripts/build-image.mjs --file=dockers/teable/Dockerfile.db-migrate \
-		  --tag=teable-db-migrate:develop
+		  --tag=cybernetics-db-migrate:develop
 
 
 postgres.integration.test: docker.create.network
