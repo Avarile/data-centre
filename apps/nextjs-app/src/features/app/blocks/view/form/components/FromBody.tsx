@@ -6,7 +6,7 @@ import { Button, cn } from '@teable/ui-lib/shadcn';
 import { toast } from '@teable/ui-lib/shadcn/ui/sonner';
 import { omit } from 'lodash';
 import { useTranslation } from 'next-i18next';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocalStorage, useMap, useSet } from 'react-use';
 import { usePreviewUrl } from '@/features/app/hooks/usePreviewUrl';
 import { tableConfig } from '@/features/i18n/table.config';
@@ -29,9 +29,21 @@ export const FormBody = (props: IFormBodyProps) => {
     LocalStorageKeys.ViewFromData,
     {}
   );
+  // Always initialize with {} so server and client first renders match (avoids hydration mismatch
+  // from localStorage values causing different DOM structures in rich editors like attachments/links)
   const [formData, { set: setFormData, setAll: initFormData, remove: removeFormData }] = useMap<
     Record<string, unknown>
-  >(formDataMap?.[localKey] ?? {});
+  >({});
+
+  // Restore saved data from localStorage after hydration completes
+  useEffect(() => {
+    const saved = formDataMap?.[localKey];
+    if (saved && Object.keys(saved).length > 0) {
+      initFormData(saved);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [errors, { add: addError, remove: removeError, reset: resetErrors }] = useSet<string>(
     new Set([])
   );
@@ -61,7 +73,6 @@ export const FormBody = (props: IFormBodyProps) => {
 
     setFormData(fieldId, value);
 
-    // Store to local storage
     setTimeout(() =>
       setFormDataMap({
         ...formDataMap,
@@ -131,7 +142,7 @@ export const FormBody = (props: IFormBodyProps) => {
     <div className={className}>
       <div
         className={cn(
-          'relative h-36 w-full',
+          'relative h-44 w-full',
           !coverUrl &&
             'bg-gradient-to-tr from-green-400 via-blue-400 to-blue-600 dark:from-green-600 dark:via-blue-600 dark:to-blue-900'
         )}
@@ -139,36 +150,41 @@ export const FormBody = (props: IFormBodyProps) => {
         {coverUrl && (
           <img
             src={previewUrl(coverUrl)}
-            alt="card cover"
+            alt="cover"
             className="absolute inset-0 size-full object-cover"
           />
         )}
       </div>
 
       {logoUrl && (
-        <div className="group absolute left-1/2 top-[104px] ml-[-40px] size-20">
+        <div className="absolute left-8 top-[132px] size-[68px]">
           <img
-            className="absolute inset-0 size-full rounded-lg object-cover shadow-sm"
+            className="size-full rounded-xl object-cover shadow-lg ring-4 ring-background"
             src={previewUrl(logoUrl)}
-            alt="card cover"
+            alt="logo"
           />
         </div>
       )}
 
       <div
         className={cn(
-          'mb-6 w-full px-6 text-center text-3xl leading-9 sm:px-12',
-          logoUrl ? 'mt-16' : 'mt-8'
+          'w-full px-8 text-2xl font-semibold tracking-tight',
+          logoUrl ? 'pb-2 pt-24' : 'pb-2 pt-8'
         )}
         style={{ overflowWrap: 'break-word' }}
       >
         {name ?? t('untitled')}
       </div>
 
-      {description && <div className="mb-4 w-full whitespace-pre-line px-12">{description}</div>}
+      {description && (
+        <div className="mb-6 w-full whitespace-pre-line px-8 text-sm leading-relaxed text-muted-foreground">
+          {description}
+        </div>
+      )}
 
       {Boolean(visibleFields.length) && (
-        <div className="w-full px-6 sm:px-12">
+        <div className="w-full px-8 pb-10">
+          <div className="mb-8 h-px bg-border" />
           {visibleFields.map((field) => {
             const { id: fieldId } = field;
             return (
@@ -181,11 +197,10 @@ export const FormBody = (props: IFormBodyProps) => {
               />
             );
           })}
-
-          <div className="mb-12 mt-8 flex w-full justify-center sm:mb-0 sm:px-12">
+          <div className="mt-8">
             <Button
-              className="w-full text-base sm:w-56"
-              size={'lg'}
+              className="w-full text-base font-medium"
+              size="lg"
               onClick={onSubmit}
               disabled={loading || !submit}
             >

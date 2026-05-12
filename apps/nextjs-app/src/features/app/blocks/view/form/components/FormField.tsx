@@ -34,28 +34,27 @@ export const FormField: FC<IFormFieldEditorProps> = (props) => {
   const isError = errors.has(fieldId);
 
   return (
-    <div className="relative w-full py-5" id={`form-field-${fieldId}`}>
-      <div className="mb-2 flex w-full overflow-hidden">
-        <div className="flex h-6 shrink-0 items-center">
-          <Icon className="size-4 shrink-0" />
-        </div>
-        <h3 className="ml-1">{name}</h3>
+    <div className="relative w-full py-4" id={`form-field-${fieldId}`}>
+      <div className="mb-2 flex w-full items-center gap-1.5 overflow-hidden">
+        <Icon className="size-4 shrink-0 text-muted-foreground" />
+        <div className="text-sm font-medium leading-snug">{name}</div>
+        {required && <span className="text-xs text-destructive">*</span>}
       </div>
 
       {description && (
-        <div className="mb-2 whitespace-pre-line text-xs text-slate-400">{description}</div>
+        <div className="mb-2 whitespace-pre-line text-xs leading-normal text-muted-foreground">
+          {description}
+        </div>
       )}
 
       <FormCellEditor
         cellValue={value}
         field={field}
         onChange={onChange}
-        className={isError ? 'border-red-500 focus-visible:ring-transparent' : ''}
+        className={isError ? 'border-destructive focus-visible:ring-transparent' : ''}
       />
 
-      {isError && <div className="mt-1 text-xs text-red-500">{t('required')}</div>}
-
-      {required && <span className="absolute left-[-10px] top-5 text-red-500">*</span>}
+      {isError && <div className="mt-1 text-xs text-destructive">{t('required')}</div>}
     </div>
   );
 };
