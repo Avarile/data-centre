@@ -79,7 +79,7 @@ const ENV_DEFAULTS = {
     OTEL_EXPORTER_OTLP_ENDPOINT: 'http://localhost:4318/v1/traces',
     OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: 'http://localhost:4318/v1/logs',
     OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: undefined,
-    OTEL_SERVICE_NAME: 'teable',
+    OTEL_SERVICE_NAME: 'cybernetics',
     OTEL_EXPORT_RATIO: '1.0',
     OTEL_EXPORT_LATENCY_THRESHOLD_MS: '1500',
     OTEL_METRIC_EXPORT_INTERVAL_MS: '10000',
@@ -88,7 +88,7 @@ const ENV_DEFAULTS = {
     OTEL_EXPORTER_OTLP_ENDPOINT: undefined,
     OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: undefined,
     OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: undefined,
-    OTEL_SERVICE_NAME: 'teable',
+    OTEL_SERVICE_NAME: 'cybernetics',
     OTEL_EXPORT_RATIO: '0.1',
     OTEL_EXPORT_LATENCY_THRESHOLD_MS: '1500',
     OTEL_METRIC_EXPORT_INTERVAL_MS: '60000',
@@ -134,7 +134,7 @@ const headers = parseHeaders(process.env.OTEL_EXPORTER_OTLP_HEADERS);
 const traceEndpoint = getConfig('OTEL_EXPORTER_OTLP_ENDPOINT');
 const logEndpoint = getConfig('OTEL_EXPORTER_OTLP_LOGS_ENDPOINT');
 const metricsEndpoint = getConfig('OTEL_EXPORTER_OTLP_METRICS_ENDPOINT');
-const serviceName = getConfig('OTEL_SERVICE_NAME') || 'teable';
+const serviceName = getConfig('OTEL_SERVICE_NAME') || 'cybernetics';
 const exportRatio = Math.max(0, Math.min(1, parseNumber(getConfig('OTEL_EXPORT_RATIO'), 0.1)));
 const latencyThresholdMs = Math.max(
   0,
@@ -239,7 +239,7 @@ const createSmartBatchProcessor = (exporter: OTLPTraceExporter): SpanProcessor =
 // Track in-flight outbound HTTP requests by target host via SpanProcessor,
 // since instrumentation-http only records duration after completion.
 const httpClientActiveRequests = metrics
-  .getMeter('teable-observability')
+  .getMeter('cybernetics-observability')
   .createUpDownCounter('http.client.active_requests', {
     description: 'Number of currently in-flight outbound HTTP requests',
   });
