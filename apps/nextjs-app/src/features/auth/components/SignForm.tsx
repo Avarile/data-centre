@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ZodIssue } from 'zod';
 import { fromZodError } from 'zod-validation-error';
 import { trackSignUpConversion } from '@/components/google-ads';
+import { useBrand } from '@/features/app/hooks/useBrand';
 import { useCutDown } from '@/features/app/hooks/useCutDown';
 import { useEnv } from '@/features/app/hooks/useEnv';
 import { usePublicSettingQuery } from '@/features/app/hooks/useSetting';
@@ -34,6 +35,7 @@ export interface ISignForm {
 export const SignForm: FC<ISignForm> = (props) => {
   const { className, type = 'signin', onSuccess } = props;
   const { t } = useTranslation(authConfig.i18nNamespaces);
+  const { brandName } = useBrand();
   const [signupVerificationToken, setSignupVerificationToken] = useState<string>();
   const [signupVerificationCode, setSignupVerificationCode] = useState<string>();
   const router = useRouter();
@@ -467,6 +469,12 @@ export const SignForm: FC<ISignForm> = (props) => {
           </div>
         </div>
       </form>
+      <footer className="mt-6 border-t pt-4 text-center text-xs text-muted-foreground">
+        <p>
+          &copy; {new Date().getFullYear()} {brandName}. All rights reserved.
+        </p>
+        <p className="mt-2">By Avarile.</p>
+      </footer>
     </div>
   );
 };
