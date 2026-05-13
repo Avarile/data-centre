@@ -1,4 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, MessageSquare, X } from '@teable/icons';
 import { aiGenerateStream } from '@teable/openapi';
 import { ReactQueryKeys } from '@teable/sdk';
@@ -6,8 +6,9 @@ import { Button, Textarea } from '@teable/ui-lib/shadcn';
 import { Send } from 'lucide-react';
 import { useTranslation } from 'next-i18next';
 import { Resizable } from 're-resizable';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useChatPanelStore } from '../../../components/sidebar/useChatPanelStore';
+import { useGridSearchStore } from '../../view/grid/useGridSearchStore';
 
 interface IMessage {
   role: 'user' | 'assistant';
@@ -45,7 +46,6 @@ interface IChatPanelProps {
 export const ChatPanel = ({ baseId }: IChatPanelProps) => {
   const { status, close, toggleExpanded } = useChatPanelStore();
   const { t } = useTranslation('common');
-  const queryClient = useQueryClient();
 
   const [messages, setMessages] = useState<IMessage[]>([]);
   const [input, setInput] = useState('');
@@ -57,14 +57,41 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const gridSelection = queryClient.getQueryData<IGridSelection>(
-    ReactQueryKeys.gridSelection(baseId)
-  );
+  // useQuery (not getQueryData) so ChatPanel re-renders when setQueryData fires from the grid
+  const { data: gridSelection } = useQuery<IGridSelection | null>({
+    queryKey: ReactQueryKeys.gridSelection(baseId),
+    queryFn: () => Promise.resolve(null),
+    staleTime: Infinity,
+    initialData: null,
+  });
+
+  const recordMap = useGridSearchStore((state) => state.recordMap);
+  const fields = useGridSearchStore((state) => state.fields);
 
   const selectedRowCount =
     gridSelection?.addToChat && !contextDismissed && gridSelection.rows
       ? gridSelection.rows.reduce((sum, [start, end]) => sum + (end - start + 1), 0)
       : 0;
+
+  // Serialise the selected records into a pipe-separated table string for the AI prompt
+  const selectedRecordsContext = useMemo(() => {
+    if (!gridSelection?.addToChat || contextDismissed || !gridSelection.rows) return '';
+    if (!recordMap || !fields || fields.length === 0) return '';
+
+    const header = fields.map((f) => f.name).join(' | ');
+    const rows = gridSelection.rows
+      .flatMap(([start, end]) =>
+        Array.from({ length: end - start + 1 }, (_, i) => {
+          const record = recordMap[start + i];
+          if (!record) return null;
+          return fields.map((f) => f.cellValue2String(record.fields[f.id])).join(' | ');
+        })
+      )
+      .filter(Boolean);
+
+    if (rows.length === 0) return '';
+    return `${header}\n${rows.join('\n')}`;
+  }, [gridSelection, contextDismissed, recordMap, fields]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -103,10 +130,9 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
 
     // Build a single prompt from context + conversation history + new message.
     // The backend uses pipeTextStreamToResponse which streams raw text (not SSE).
-    const preamble =
-      selectedRowCount > 0
-        ? `You are a helpful data assistant. The user has ${selectedRowCount} row(s) selected from a table.\n\n`
-        : 'You are a helpful data assistant.\n\n';
+    const preamble = selectedRecordsContext
+      ? `You are a helpful data assistant. The user has selected these records from the table:\n\n${selectedRecordsContext}\n\n`
+      : 'You are a helpful data assistant.\n\n';
 
     const history = messages
       .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
@@ -161,7 +187,7 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
       setIsStreaming(false);
       abortRef.current = null;
     }
-  }, [input, isStreaming, messages, selectedRowCount, baseId, t]);
+  }, [input, isStreaming, messages, selectedRecordsContext, baseId, t]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
