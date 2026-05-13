@@ -519,7 +519,7 @@ export class NotificationService {
     switch (notifyType) {
       case NotificationTypeEnum.System:
       case NotificationTypeEnum.ExportBase:
-        return { iconUrl: `${origin}/images/favicon/favicon.svg` };
+        return { iconUrl: `${origin}/images/favicon/favicon.png` };
       case NotificationTypeEnum.Comment:
       case NotificationTypeEnum.CollaboratorCellTag:
       case NotificationTypeEnum.CollaboratorMultiRowTag: {
