@@ -4,20 +4,33 @@ import { getSetting, updateSetting } from '@teable/openapi';
 import { useIsHydrated } from '@teable/sdk/hooks';
 import { useRouter } from 'next/router';
 import { useTranslation } from 'next-i18next';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AIConfigurationStatus } from '../setting/components/ai-config/AIConfigurationStatus';
 import { AIControlCard } from '../setting/components/ai-config/AIControlCard';
 import { AIConfigFormWizard } from '../setting/components/ai-config/AiFormWizard';
+import { AppBuilderConfig } from './AppBuilderConfig';
 
 export interface IAiSettingPageProps {
   settingServerData?: ISettingVo;
 }
+
+// Maps AIConfigurationStatus section names to wizard step indices
+const SECTION_TO_STEP: Record<string, number> = {
+  enable: 0,
+  gateway: 0,
+  providers: 0,
+  'gateway-models': 1,
+  'chat-model': 2,
+};
 
 export const AiSettingPage = ({ settingServerData }: IAiSettingPageProps) => {
   const { t } = useTranslation('common');
   const queryClient = useQueryClient();
   const router = useRouter();
   const llmRef = useRef<HTMLDivElement>(null);
+  const appRef = useRef<HTMLDivElement>(null);
   const isHydrated = useIsHydrated();
+  const [wizardStep, setWizardStep] = useState(-1);
 
   const { data: setting = settingServerData } = useQuery({
     queryKey: ['setting'],
@@ -33,12 +46,18 @@ export const AiSettingPage = ({ settingServerData }: IAiSettingPageProps) => {
 
   useEffect(() => {
     const { anchor } = router.query;
-    if (anchor === 'llm' || anchor === 'app') {
-      setTimeout(() => {
-        llmRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 500);
+    if (anchor === 'llm') {
+      setTimeout(() => llmRef.current?.scrollIntoView({ behavior: 'smooth' }), 500);
+    } else if (anchor === 'app') {
+      setTimeout(() => appRef.current?.scrollIntoView({ behavior: 'smooth' }), 500);
     }
   }, [router.query]);
+
+  const handleNavigate = useCallback((section: string) => {
+    const step = SECTION_TO_STEP[section] ?? 0;
+    setWizardStep(step);
+    setTimeout(() => llmRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+  }, []);
 
   if (!setting || !isHydrated) return null;
 
@@ -50,6 +69,10 @@ export const AiSettingPage = ({ settingServerData }: IAiSettingPageProps) => {
     mutateUpdateSetting({
       aiConfig: { ...setting.aiConfig, disableActions },
     } as IUpdateSettingRo);
+  };
+
+  const saveAppConfig = (appConfig: NonNullable<ISettingVo['appConfig']>) => {
+    mutateUpdateSetting({ appConfig } as IUpdateSettingRo);
   };
 
   return (
@@ -65,14 +88,29 @@ export const AiSettingPage = ({ settingServerData }: IAiSettingPageProps) => {
       </div>
 
       <div className="flex max-w-3xl flex-col gap-6">
+        {/* AI Configuration Status — checklist with click-to-navigate */}
+        <AIConfigurationStatus aiConfig={setting.aiConfig} onNavigate={handleNavigate} />
+
+        {/* LLM Provider Setup Wizard */}
         <div ref={llmRef}>
-          <AIConfigFormWizard aiConfig={setting.aiConfig} setAiConfig={setAiConfig} />
+          <AIConfigFormWizard
+            aiConfig={setting.aiConfig}
+            setAiConfig={setAiConfig}
+            currentStep={wizardStep}
+            onStepChange={setWizardStep}
+          />
         </div>
 
+        {/* AI Feature Enable/Disable Toggles */}
         <AIControlCard
           disableActions={setting.aiConfig?.disableActions ?? []}
           onChange={onControlChange}
         />
+
+        {/* App Builder Configuration */}
+        <div ref={appRef}>
+          <AppBuilderConfig appConfig={setting.appConfig} onSave={saveAppConfig} />
+        </div>
       </div>
     </div>
   );

@@ -29,18 +29,22 @@ import {
   parseModelKey,
 } from './utils';
 
-// Props to control whether to show pricing-related UI
 interface IAIConfigFormWizardProps {
   aiConfig: ISettingVo['aiConfig'];
   setAiConfig: (data: NonNullable<ISettingVo['aiConfig']>) => void;
   /** Whether to show pricing/billing related UI. Defaults to isCloud. */
   showPricing?: boolean;
+  /** Controlled step index (-1 = all collapsed). Omit for uncontrolled. */
+  currentStep?: number;
+  onStepChange?: (step: number) => void;
 }
 
 export function AIConfigFormWizard({
   aiConfig,
   setAiConfig,
   showPricing,
+  currentStep: controlledStep,
+  onStepChange,
 }: IAIConfigFormWizardProps) {
   const isCloud = useIsCloud();
   // showPricing defaults to isCloud if not explicitly provided
@@ -105,9 +109,10 @@ export function AIConfigFormWizard({
     setAiConfig(clearedConfig);
   }, [form, setAiConfig]);
 
-  // Current step state
-  // Default collapsed on page load, user can expand steps manually.
-  const [currentStep, setCurrentStep] = useState(-1);
+  // Current step state — supports controlled (via props) and uncontrolled usage.
+  const [internalStep, setInternalStep] = useState(-1);
+  const currentStep = controlledStep ?? internalStep;
+  const setCurrentStep = onStepChange ?? setInternalStep;
 
   // Compute step completion status
   const { hasGatewayKey, isStep1Complete, isStep2Complete } = useAISetupSteps({

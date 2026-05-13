@@ -32,6 +32,7 @@ import type { IBaseResourceTable } from '../../hooks/useBaseResource';
 import { useBaseResource } from '../../hooks/useBaseResource';
 import { useBrand } from '../../hooks/useBrand';
 import { View } from '../view/View';
+import { ChatPanel } from './chat-panel/ChatPanel';
 import { FailAlert } from './FailAlert';
 import { useViewErrorHandler } from './hooks/use-view-error-handler';
 import { TableHeader } from './table-header/TableHeader';
@@ -127,7 +128,7 @@ export const Table: React.FC<ITableProps> = ({
                   <PluginContextMenu tableId={tableId} baseId={baseId} />
                   <DownloadAllAttachmentsDialog />
                   <CellDownloadHandler />
-                  {/* <ChatPanel /> */}
+                  <ChatPanel baseId={baseId} />
                 </div>
               </PersonalViewProvider>
             </FieldProvider>

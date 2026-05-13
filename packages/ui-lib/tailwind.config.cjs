@@ -13,6 +13,9 @@ module.exports = {
     {
       extend: {
         colors: {
+          neutral: {
+            850: '#1e1e1e',
+          },
           warning: 'hsl(var(--warning))',
           'warning-foreground': 'hsl(var(--warning-foreground))',
           'border-high': 'hsl(var(--border-high))',

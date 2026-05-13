@@ -1,4 +1,4 @@
-import { Copy, HelpCircle, MoreHorizontal, UserPlus } from '@teable/icons';
+import { Copy, HelpCircle, MessageSquare, MoreHorizontal, UserPlus } from '@teable/icons';
 import { BaseNodeResourceType } from '@teable/openapi';
 import {
   useBase,
@@ -29,6 +29,7 @@ import { useTranslation } from 'next-i18next';
 import { Fragment, useEffect, useState } from 'react';
 import { ShareBasePopover } from '@/features/app/components/collaborator/share/ShareBasePopover';
 import { PublicOperateButton } from '@/features/app/components/PublicOperateButton';
+import { useChatPanelStore } from '@/features/app/components/sidebar/useChatPanelStore';
 import type { IBaseResourceTable } from '@/features/app/hooks/useBaseResource';
 import { useBaseResource } from '@/features/app/hooks/useBaseResource';
 import { useIsInIframe } from '@/features/app/hooks/useIsInIframe';
@@ -46,6 +47,7 @@ const RightActions = ({ setIsEditing }: { setIsEditing?: (isEditing: boolean) =>
   const base = useBase();
   const { t } = useTranslation(tableConfig.i18nNamespaces);
   const [open, setOpen] = useState(false);
+  const { status: chatStatus, toggleVisible: toggleChat } = useChatPanelStore();
   const { tableId } = useBaseResource() as IBaseResourceTable;
   const isTouchDevice = useIsTouchDevice();
   const isHydrated = useIsHydrated();
@@ -181,6 +183,15 @@ const RightActions = ({ setIsEditing }: { setIsEditing?: (isEditing: boolean) =>
               <span className="hidden @md/view-header:inline">{t('space:action.invite')}</span>
             </Button>
           </ShareBasePopover>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            title={t('common:ai.chat.title', 'AI Chat')}
+            className={cn(chatStatus !== 'close' && 'bg-accent text-accent-foreground')}
+            onClick={toggleChat}
+          >
+            <MessageSquare className="size-4" />
+          </Button>
           <Button asChild variant="ghost" size="icon-xs">
             <Link
               href={t('help.mainLink')}

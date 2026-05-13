@@ -65,7 +65,7 @@ export const gridTheme: IGridTheme = {
   // Common
   staticWhite: '#FFFFFF',
   staticBlack: '#000000',
-  iconFgCommon: colors.gray[500],
+  iconFgCommon: colors.zinc[400],
   iconBgCommon: colors.transparent,
   iconFgHighlight: colors.yellow[400],
   iconBgHighlight: colors.yellow[400],
@@ -84,47 +84,46 @@ export const gridTheme: IGridTheme = {
     'Inter, Roboto, -apple-system, BlinkMacSystemFont, avenir next, avenir, segoe ui, helvetica neue, helvetica, Ubuntu, noto, arial, sans-serif',
 
   // Cell
-  cellBg: colors.white,
-  cellBgHovered: '#F7F7F7',
-  cellBgSelected: '#F0F0F0',
-  // cellBgSelected: colors.zinc[100],
-  cellBgLoading: hexToRGBA(colors.black, 0.04),
-  cellLineColor: colors.zinc[200],
-  cellLineColorActived: colors.black,
-  cellTextColor: colors.zinc[900],
-  cellTextColorHighlight: colors.violet[500],
-  cellOptionBg: colors.gray[300],
-  cellOptionBgHighlight: colors.zinc[200],
-  cellOptionTextColor: colors.black,
+  cellBg: '#1e1e1e',
+  cellBgHovered: '#262626',
+  cellBgSelected: '#2e2e2e',
+  cellBgLoading: hexToRGBA(colors.white, 0.08),
+  cellLineColor: hexToRGBA(colors.white, 0.1),
+  cellLineColorActived: colors.zinc[300],
+  cellTextColor: colors.zinc[200],
+  cellTextColorHighlight: colors.violet[400],
+  cellOptionBg: colors.zinc[600],
+  cellOptionBgHighlight: colors.zinc[500],
+  cellOptionTextColor: colors.zinc[100],
 
   // Group Header
-  groupHeaderBgPrimary: '#FAFAFA',
-  groupHeaderBgSecondary: '#F4F4F5',
-  groupHeaderBgTertiary: '#EAEAEB',
+  groupHeaderBgPrimary: '#141414',
+  groupHeaderBgSecondary: '#1e1e1e',
+  groupHeaderBgTertiary: '#262626',
 
   // Column Statistic
-  columnStatisticBgHoveredPrimary: '#F2F2F2',
-  columnStatisticBgHoveredSecondary: '#EDECEC',
-  columnStatisticBgHoveredTertiary: '#E3E2E2',
+  columnStatisticBgHoveredPrimary: '#1e1e1e',
+  columnStatisticBgHoveredSecondary: '#262626',
+  columnStatisticBgHoveredTertiary: '#2e2e2e',
 
   // Column Header
-  columnHeaderBg: colors.zinc[50],
-  columnHeaderBgHovered: colors.zinc[100],
-  columnHeaderBgSelected: colors.zinc[200],
-  columnHeaderNameColor: colors.zinc[900],
+  columnHeaderBg: '#141414',
+  columnHeaderBgHovered: '#1e1e1e',
+  columnHeaderBgSelected: '#262626',
+  columnHeaderNameColor: colors.zinc[200],
   columnResizeHandlerBg: colors.blue[500],
-  columnDraggingPlaceholderBg: hexToRGBA(colors.black, 0.2),
+  columnDraggingPlaceholderBg: hexToRGBA(colors.white, 0.2),
 
   // Row Header
-  rowHeaderTextColor: colors.zinc[500],
+  rowHeaderTextColor: colors.zinc[400],
 
   // Append Row
-  appendRowBg: colors.zinc[50],
-  appendRowBgHovered: colors.zinc[100],
+  appendRowBg: '#141414',
+  appendRowBgHovered: '#1e1e1e',
 
   // Avatar Theme
-  avatarBg: colors.gray[100],
-  avatarTextColor: colors.gray[950],
+  avatarBg: colors.zinc[600],
+  avatarTextColor: colors.zinc[100],
   avatarSizeXS: 16,
   avatarSizeSM: 20,
   avatarSizeMD: 24,
@@ -132,15 +131,15 @@ export const gridTheme: IGridTheme = {
   themeKey: 'light',
 
   // ScrollBar
-  scrollBarBg: colors.gray[400],
+  scrollBarBg: colors.zinc[500],
 
   // interaction
-  interactionLineColorCommon: colors.zinc[300],
+  interactionLineColorCommon: hexToRGBA(colors.white, 0.15),
   interactionLineColorHighlight: colors.blue[500],
 
   // search cursor
-  searchCursorBg: colors.blue[300],
-  searchTargetIndexBg: colors.blue[100],
+  searchCursorBg: '#243854',
+  searchTargetIndexBg: '#172231',
 
   // comment
   commentCountBg: colors.orange[400],

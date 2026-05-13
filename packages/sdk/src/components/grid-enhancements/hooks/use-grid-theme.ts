@@ -7,47 +7,47 @@ const lightTheme = {} as IGridTheme;
 
 const darkTheme = {
   // Common
-  iconFgCommon: colors.slate[50],
+  iconFgCommon: colors.zinc[400],
 
   // Cell
-  cellBg: '#121314',
-  cellBgHovered: '#1C1E1F',
-  cellBgSelected: '#242426',
+  cellBg: '#1e1e1e',
+  cellBgHovered: '#262626',
+  cellBgSelected: '#2e2e2e',
   cellBgLoading: hexToRGBA(colors.white, 0.08),
   cellLineColor: hexToRGBA(colors.white, 0.1),
-  cellLineColorActived: colors.zinc[400],
+  cellLineColorActived: colors.zinc[300],
   cellTextColor: colors.zinc[200],
-  cellOptionBg: colors.zinc[700],
-  cellOptionTextColor: colors.zinc[200],
+  cellOptionBg: colors.zinc[600],
+  cellOptionTextColor: colors.zinc[100],
 
   // Group Header
-  groupHeaderBgPrimary: '#17181A',
-  groupHeaderBgSecondary: '#1D1D1F',
-  groupHeaderBgTertiary: '#252526',
+  groupHeaderBgPrimary: '#141414',
+  groupHeaderBgSecondary: '#1e1e1e',
+  groupHeaderBgTertiary: '#262626',
 
   // Column Header
-  columnHeaderBg: '#1C1D1F',
-  columnHeaderBgHovered: '#242426',
-  columnHeaderBgSelected: '#2C2D2E',
+  columnHeaderBg: '#141414',
+  columnHeaderBgHovered: '#1e1e1e',
+  columnHeaderBgSelected: '#262626',
   columnHeaderNameColor: colors.zinc[200],
-  columnResizeHandlerBg: colors.zinc[500],
+  columnResizeHandlerBg: colors.blue[500],
   columnDraggingPlaceholderBg: hexToRGBA(colors.white, 0.2),
 
   // Column Statistic
-  columnStatisticBgHoveredPrimary: '#262729',
-  columnStatisticBgHoveredSecondary: '#2C2C2E',
-  columnStatisticBgHoveredTertiary: '#323233',
+  columnStatisticBgHoveredPrimary: '#1e1e1e',
+  columnStatisticBgHoveredSecondary: '#262626',
+  columnStatisticBgHoveredTertiary: '#2e2e2e',
 
   // Row Header
-  rowHeaderTextColor: colors.zinc[200],
+  rowHeaderTextColor: colors.zinc[400],
 
   // Append Row
-  appendRowBg: colors.zinc[900],
-  appendRowBgHovered: colors.zinc[800],
+  appendRowBg: '#141414',
+  appendRowBgHovered: '#1e1e1e',
 
   // Avatar
-  avatarBg: colors.zinc[900],
-  avatarTextColor: colors.zinc[200],
+  avatarBg: colors.zinc[600],
+  avatarTextColor: colors.zinc[100],
   avatarSizeXS: 16,
   avatarSizeSM: 20,
   avatarSizeMD: 24,
@@ -55,10 +55,10 @@ const darkTheme = {
   themeKey: 'dark',
 
   // ScrollBar
-  scrollBarBg: colors.zinc[700],
+  scrollBarBg: colors.zinc[500],
 
   // interaction
-  interactionLineColorCommon: colors.zinc[700],
+  interactionLineColorCommon: hexToRGBA(colors.white, 0.15),
   interactionLineColorHighlight: colors.blue[500],
 
   // search cursor

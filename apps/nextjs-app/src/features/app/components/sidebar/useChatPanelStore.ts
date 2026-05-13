@@ -35,7 +35,7 @@ export const useChatPanelStore = create<IChatPanelState>()(
   persist(
     (set) => ({
       status: 'open',
-      panelType: 'app-builder',
+      panelType: 'general',
       setPanelType: (type: 'general' | 'app-builder') => set({ panelType: type }),
       close: () =>
         set(() => ({
