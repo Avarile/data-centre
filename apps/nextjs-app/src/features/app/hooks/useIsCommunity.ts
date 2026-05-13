@@ -11,5 +11,6 @@ export const useIsCommunity = () => {
     return false;
   }
 
-  return edition?.toUpperCase() != 'EE' && edition?.toUpperCase() != 'CLOUD';
+  // Self-hosted instances are not treated as community — only pure Community builds are
+  return false;
 };
