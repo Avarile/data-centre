@@ -4,7 +4,7 @@
   "rsc": true,
   "tsx": true,
   "tailwind": {
-    "config": "tailwind.shadcnui.config.js",
+    "config": "tailwind.config.js",
     "css": "./src/styles/global.shadcn.css",
     "baseColor": "gray",
     "cssVariables": true

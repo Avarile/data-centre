@@ -2,11 +2,35 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, MessageSquare, X } from '@teable/icons';
 import { aiGenerateStream } from '@teable/openapi';
 import { ReactQueryKeys } from '@teable/sdk';
-import { Button, Textarea } from '@teable/ui-lib/shadcn';
-import { Send } from 'lucide-react';
+import { Button } from '@teable/ui-lib/shadcn';
 import { useTranslation } from 'next-i18next';
 import { Resizable } from 're-resizable';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Conversation,
+  ConversationContent,
+  ConversationEmptyState,
+  ConversationScrollButton,
+} from '../../../../../components/ai-elements/conversation';
+import {
+  Message,
+  MessageContent,
+  MessageResponse,
+} from '../../../../../components/ai-elements/message';
+import type { PromptInputMessage } from '../../../../../components/ai-elements/prompt-input';
+import {
+  PromptInput,
+  PromptInputBody,
+  PromptInputFooter,
+  PromptInputSubmit,
+  PromptInputTextarea,
+  PromptInputTools,
+} from '../../../../../components/ai-elements/prompt-input';
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from '../../../../../components/ai-elements/reasoning';
 import { useChatPanelStore } from '../../../components/sidebar/useChatPanelStore';
 import { useGridSearchStore } from '../../view/grid/useGridSearchStore';
 
@@ -48,16 +72,15 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
   const { t } = useTranslation('common');
 
   const [messages, setMessages] = useState<IMessage[]>([]);
-  const [input, setInput] = useState('');
+  const [hasText, setHasText] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
   const [contextDismissed, setContextDismissed] = useState(false);
   const [panelWidth, setPanelWidth] = useState(
     status === 'expanded' ? PANEL_EXPANDED_WIDTH : PANEL_DEFAULT_WIDTH
   );
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // useQuery (not getQueryData) so ChatPanel re-renders when setQueryData fires from the grid
   const { data: gridSelection } = useQuery<IGridSelection | null>({
     queryKey: ReactQueryKeys.gridSelection(baseId),
     queryFn: () => Promise.resolve(null),
@@ -73,7 +96,6 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
       ? gridSelection.rows.reduce((sum, [start, end]) => sum + (end - start + 1), 0)
       : 0;
 
-  // Serialise the selected records into a pipe-separated table string for the AI prompt
   const selectedRecordsContext = useMemo(() => {
     if (!gridSelection?.addToChat || contextDismissed || !gridSelection.rows) return '';
     if (!recordMap || !fields || fields.length === 0) return '';
@@ -94,113 +116,114 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
   }, [gridSelection, contextDismissed, recordMap, fields]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  // Reset context dismissed state when a new selection comes in
-  useEffect(() => {
     if (gridSelection?.addToChat) {
       setContextDismissed(false);
     }
   }, [gridSelection?.timestamp, gridSelection?.addToChat]);
 
-  // Sync panel width when expand/collapse is toggled from the store
   useEffect(() => {
     setPanelWidth(status === 'expanded' ? PANEL_EXPANDED_WIDTH : PANEL_DEFAULT_WIDTH);
   }, [status]);
 
-  // Abort any in-flight stream when the panel unmounts
   useEffect(() => {
     return () => {
       abortRef.current?.abort();
     };
   }, []);
 
-  const sendMessage = useCallback(async () => {
-    const text = input.trim();
-    if (!text || isStreaming) return;
+  const streamAssistantReply = useCallback(
+    async (userText: string, history: IMessage[]) => {
+      const preamble = selectedRecordsContext
+        ? `You are a helpful data assistant. The user has selected these records from the table:\n\n${selectedRecordsContext}\n\n`
+        : 'You are a helpful data assistant.\n\n';
 
-    const userMsg: IMessage = { role: 'user', content: text };
-    setMessages((prev) => [...prev, userMsg, { role: 'assistant', content: '' }]);
-    setInput('');
-    setIsStreaming(true);
+      const historyStr = history
+        .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+        .join('\n');
 
-    const controller = new AbortController();
-    abortRef.current = controller;
+      const prompt = `${preamble}${historyStr ? historyStr + '\n' : ''}User: ${userText}\nAssistant:`;
 
-    // Build a single prompt from context + conversation history + new message.
-    // The backend uses pipeTextStreamToResponse which streams raw text (not SSE).
-    const preamble = selectedRecordsContext
-      ? `You are a helpful data assistant. The user has selected these records from the table:\n\n${selectedRecordsContext}\n\n`
-      : 'You are a helpful data assistant.\n\n';
+      const controller = new AbortController();
+      abortRef.current = controller;
 
-    const history = messages
-      .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
-      .join('\n');
+      let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 
-    const prompt = `${preamble}${history ? history + '\n' : ''}User: ${text}\nAssistant:`;
-
-    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
-
-    const appendChunk = (chunk: string) => {
-      setMessages((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = {
-          ...updated[updated.length - 1],
-          content: updated[updated.length - 1].content + chunk,
-        };
-        return updated;
-      });
-    };
-
-    try {
-      const res = await aiGenerateStream(baseId, { prompt }, controller.signal);
-
-      if (!res.ok || !res.body) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-
-      reader = res.body.getReader();
-      await readStream(reader, appendChunk);
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        // Remove the placeholder bubble if nothing was streamed yet
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === 'assistant' && !last.content) {
-            return prev.slice(0, -1);
-          }
-          return prev;
-        });
-      } else {
+      const appendChunk = (chunk: string) => {
+        setIsThinking(false);
         setMessages((prev) => {
           const updated = [...prev];
           updated[updated.length - 1] = {
             ...updated[updated.length - 1],
-            content: t('ai.chat.errorMessage', 'Something went wrong. Please try again.'),
+            content: updated[updated.length - 1].content + chunk,
           };
           return updated;
         });
-      }
-    } finally {
-      reader?.cancel();
-      setIsStreaming(false);
-      abortRef.current = null;
-    }
-  }, [input, isStreaming, messages, selectedRecordsContext, baseId, t]);
+      };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
+      try {
+        const res = await aiGenerateStream(baseId, { prompt }, controller.signal);
+        if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+        reader = res.body.getReader();
+        await readStream(reader, appendChunk);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === 'assistant' && !last.content) return prev.slice(0, -1);
+            return prev;
+          });
+        } else {
+          setMessages((prev) => {
+            const updated = [...prev];
+            updated[updated.length - 1] = {
+              ...updated[updated.length - 1],
+              content: t('ai.chat.errorMessage', 'Something went wrong. Please try again.'),
+            };
+            return updated;
+          });
+        }
+      } finally {
+        reader?.cancel();
+        setIsStreaming(false);
+        setIsThinking(false);
+        abortRef.current = null;
+      }
+    },
+    [selectedRecordsContext, baseId, t]
+  );
+
+  const handleSubmit = useCallback(
+    (message: PromptInputMessage) => {
+      const text = message.text.trim();
+      if (!text || isStreaming) return;
+
+      const userMsg: IMessage = { role: 'user', content: text };
+      const assistantPlaceholder: IMessage = { role: 'assistant', content: '' };
+
+      setMessages((prev) => {
+        const next = [...prev, userMsg, assistantPlaceholder];
+        setIsStreaming(true);
+        setIsThinking(true);
+        streamAssistantReply(text, [...prev, userMsg]);
+        return next;
+      });
+    },
+    [isStreaming, streamAssistantReply]
+  );
+
+  const handleStop = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
+  const handleTextChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setHasText(e.target.value.trim().length > 0);
+  }, []);
 
   if (status === 'close') return null;
 
   return (
     <Resizable
-      className="ml-1 flex flex-col border-l bg-background"
+      className="ml-1 flex flex-col bg-background"
       size={{ width: panelWidth, height: '100%' }}
       maxWidth="60%"
       minWidth="280px"
@@ -217,7 +240,7 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
       }}
     >
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b px-3 py-2">
+      <div className="flex shrink-0 items-center justify-between px-3 py-2">
         <div className="flex items-center gap-2">
           <MessageSquare className="size-4 text-muted-foreground" />
           <span className="text-sm font-medium">{t('ai.chat.title', 'AI Chat')}</span>
@@ -243,7 +266,7 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
 
       {/* Context bar */}
       {selectedRowCount > 0 && (
-        <div className="flex shrink-0 items-center justify-between border-b bg-accent/50 px-3 py-1.5 text-xs">
+        <div className="flex shrink-0 items-center justify-between bg-accent/50 px-3 py-1.5 text-xs">
           <span className="text-muted-foreground">
             {t('ai.chat.rowsSelected', '{{count}} rows selected as context', {
               count: selectedRowCount,
@@ -261,55 +284,66 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
       )}
 
       {/* Messages */}
-      <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3">
-        {messages.length === 0 && (
-          <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
-            <MessageSquare className="size-8 opacity-30" />
-            <p>{t('ai.chat.emptyState', 'Ask anything about your data.')}</p>
-          </div>
-        )}
+      <Conversation>
+        <ConversationContent>
+          {messages.length === 0 && (
+            <ConversationEmptyState
+              description={t('ai.chat.emptyState', 'Ask anything about your data.')}
+              icon={<MessageSquare className="size-8 opacity-30" />}
+              title=""
+            />
+          )}
 
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={
-              msg.role === 'user'
-                ? 'ml-6 self-end rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground'
-                : 'mr-6 self-start rounded-lg bg-muted px-3 py-2 text-sm'
-            }
-          >
-            {msg.content ||
-              (isStreaming && i === messages.length - 1 ? (
-                <span className="animate-pulse">▍</span>
-              ) : (
-                ''
-              ))}
-          </div>
-        ))}
+          {messages.map((msg, i) => {
+            const isLastAssistant = msg.role === 'assistant' && i === messages.length - 1;
+            const showThinking = isLastAssistant && isThinking;
 
-        <div ref={messagesEndRef} />
-      </div>
+            return (
+              <Message key={i} from={msg.role}>
+                <MessageContent>
+                  {msg.role === 'user' ? (
+                    msg.content
+                  ) : (
+                    <>
+                      {showThinking && (
+                        <Reasoning isStreaming={isThinking}>
+                          <ReasoningTrigger />
+                          <ReasoningContent>{''}</ReasoningContent>
+                        </Reasoning>
+                      )}
+                      {msg.content && (
+                        <MessageResponse isAnimating={isLastAssistant && isStreaming}>
+                          {msg.content}
+                        </MessageResponse>
+                      )}
+                    </>
+                  )}
+                </MessageContent>
+              </Message>
+            );
+          })}
+        </ConversationContent>
+        <ConversationScrollButton />
+      </Conversation>
 
       {/* Input */}
-      <div className="shrink-0 border-t p-3">
-        <div className="flex gap-2">
-          <Textarea
-            className="min-h-[60px] resize-none text-sm"
-            placeholder={t('ai.chat.inputPlaceholder', 'Ask a question… (Enter to send)')}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={isStreaming}
-          />
-          <Button
-            size="sm"
-            className="shrink-0 self-end"
-            onClick={sendMessage}
-            disabled={!input.trim() || isStreaming}
-          >
-            <Send className="size-4" />
-          </Button>
-        </div>
+      <div className="shrink-0 p-3">
+        <PromptInput onSubmit={handleSubmit}>
+          <PromptInputBody>
+            <PromptInputTextarea
+              onChange={handleTextChange}
+              placeholder={t('ai.chat.inputPlaceholder', 'Ask a question… (Enter to send)')}
+            />
+          </PromptInputBody>
+          <PromptInputFooter className="justify-end">
+            <PromptInputTools />
+            <PromptInputSubmit
+              disabled={!hasText && !isStreaming}
+              onStop={handleStop}
+              status={isStreaming ? 'streaming' : 'ready'}
+            />
+          </PromptInputFooter>
+        </PromptInput>
       </div>
     </Resizable>
   );
