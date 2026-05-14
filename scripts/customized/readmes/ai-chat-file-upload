@@ -1,0 +1,659 @@
+# AI Chat File Upload
+
+Complete reference for the AI Chat file-upload feature: how files move from the browser into MinIO, how they are persisted in the database, how a user selects them as conversation context, and how the backend extracts and injects their text before the LLM ever sees the prompt.
+
+---
+
+## Table of Contents
+
+1. [Feature Overview](#1-feature-overview)
+2. [File Inventory](#2-file-inventory)
+3. [Database Layer](#3-database-layer)
+4. [Storage Layer](#4-storage-layer)
+5. [OpenAPI Contract](#5-openapi-contract)
+6. [Backend Module](#6-backend-module)
+7. [Frontend Component](#7-frontend-component)
+8. [Call Chains](#8-call-chains)
+9. [File Selection & Context Injection Pipeline](#9-file-selection--context-injection-pipeline)
+10. [Access Control](#10-access-control)
+11. [File Type Handling](#11-file-type-handling)
+12. [Error Handling](#12-error-handling)
+13. [Design Decisions](#13-design-decisions)
+
+---
+
+## 1. Feature Overview
+
+Users can upload documents into a base-scoped file library, then attach any subset of those files to individual AI chat messages. The backend fetches the stored files, extracts their text content according to MIME type, and injects it into the LLM prompt inside `<file_context>` tags before the prompt reaches the agent.
+
+Two interaction paths exist:
+
+| Path | Trigger | Scope |
+|------|---------|-------|
+| **Upload new file** | Paperclip button → OS file picker | Current session queue, cleared after send |
+| **Select from library** | Files button → checkbox popover | Persists across messages until manually unchecked |
+
+Both paths produce `fileTokens: string[]` that are sent with every AI stream request.
+
+---
+
+## 2. File Inventory
+
+### Database
+
+| File | Purpose |
+|------|---------|
+| `packages/db-main-prisma/prisma/postgres/schema.prisma` | `ChatFile` model definition (lines 906–920) |
+| `packages/db-main-prisma/prisma/postgres/migrations/20260514000000_add_chat_file/migration.sql` | DDL for `chat_file` table, unique index on `token`, index on `base_id` |
+
+### OpenAPI / Shared Types
+
+| File | Purpose |
+|------|---------|
+| `packages/openapi/src/chat-file/index.ts` | Zod schemas (`chatFileVoSchema`, `saveChatFileRoSchema`), route definitions, axios API functions |
+| `packages/openapi/src/ai/generate-stream.ts` | `aiGenerateRoSchema` with `fileTokens: z.array(z.string()).optional()` |
+| `packages/openapi/src/attachment/signature.ts` | `UploadType.ChatFile = 13` enum value |
+| `packages/openapi/src/index.ts` | Re-exports `./chat-file` |
+
+### Backend
+
+| File | Purpose |
+|------|---------|
+| `apps/nestjs-backend/src/features/chat-file/chat-file.module.ts` | NestJS module: imports `StorageModule`, declares controller & service, exports service |
+| `apps/nestjs-backend/src/features/chat-file/chat-file.controller.ts` | REST endpoints: `GET /api/:baseId/chat-files`, `POST`, `DELETE /:fileId` |
+| `apps/nestjs-backend/src/features/chat-file/chat-file.service.ts` | Business logic: list, save (with validation), soft-delete, text extraction pipeline |
+| `apps/nestjs-backend/src/features/ai/ai.module.ts` | Imports `ChatFileModule` so `AiService` can inject `ChatFileService` |
+| `apps/nestjs-backend/src/features/ai/ai.service.ts` | `injectFileContext()` pre-agent step; `generateStream()` entry point |
+| `apps/nestjs-backend/src/features/attachments/plugins/adapter.ts` | `StorageAdapter.getBucket(UploadType.ChatFile)` → `privateBucket`; `getDir()` → `'chat-file'` |
+| `apps/nestjs-backend/src/app.module.ts` | Top-level module imports `ChatFileModule` |
+
+### Frontend
+
+| File | Purpose |
+|------|---------|
+| `apps/nextjs-app/src/features/app/blocks/table/chat-panel/ChatPanel.tsx` | All upload, selection, and chat UI; the single component that owns the full feature |
+
+### Tests
+
+| File | Purpose |
+|------|---------|
+| `apps/nestjs-backend/src/features/chat-file/chat-file.service.spec.ts` | 21 Vitest unit tests for `ChatFileService` (listFiles, saveFile, deleteFile, extractTextFromTokens) |
+
+---
+
+## 3. Database Layer
+
+### Prisma Model
+
+```prisma
+// packages/db-main-prisma/prisma/postgres/schema.prisma  (line 906)
+model ChatFile {
+  id          String    @id @default(cuid())
+  token       String    @unique          // MinIO presign token; used as the context reference key
+  name        String
+  size        BigInt                     // stored as BIGINT; serialised to Number on read
+  mimetype    String
+  path        String                     // object path inside the private bucket, e.g. "chat-file/abc123"
+  baseId      String    @map("base_id") // scopes the file to a base
+  createdBy   String    @map("created_by")
+  createdTime DateTime  @default(now()) @map("created_time")
+  deletedTime DateTime? @map("deleted_time")  // null = active; non-null = soft-deleted
+
+  @@index([baseId])
+  @@map("chat_file")
+}
+```
+
+### Migration
+
+```sql
+-- packages/db-main-prisma/prisma/postgres/migrations/20260514000000_add_chat_file/migration.sql
+CREATE TABLE "chat_file" (
+    "id"           TEXT         NOT NULL,
+    "token"        TEXT         NOT NULL,
+    "name"         TEXT         NOT NULL,
+    "size"         BIGINT       NOT NULL,
+    "mimetype"     TEXT         NOT NULL,
+    "path"         TEXT         NOT NULL,
+    "base_id"      TEXT         NOT NULL,
+    "created_by"   TEXT         NOT NULL,
+    "created_time" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "deleted_time" TIMESTAMP(3),
+    CONSTRAINT "chat_file_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "chat_file_token_key"   ON "chat_file"("token");
+CREATE INDEX        "chat_file_base_id_idx" ON "chat_file"("base_id");
+```
+
+**Why `token` is unique and indexed**: the token issued by the presign endpoint is the immutable identity of a file across the system. It appears in the AI request payload as the opaque reference. The unique constraint prevents the same upload being registered twice.
+
+**Why `deletedTime` instead of hard delete**: soft delete preserves audit history and guards against concurrent delete-then-read races during AI context extraction. A file being extracted by the AI service won't vanish mid-read.
+
+**Why `size` is `BIGINT`**: PostgreSQL's `INTEGER` (32-bit) overflows at ~2 GB. BigInt is stored natively. The service converts it to a JS `Number` before returning to the client; files are capped at 10 MB so the value always fits safely in a 64-bit float.
+
+---
+
+## 4. Storage Layer
+
+Files live in the MinIO **private bucket** under the `chat-file/` directory prefix.
+
+```typescript
+// apps/nestjs-backend/src/features/attachments/plugins/adapter.ts
+static readonly getBucket = (type: UploadType) => {
+  // ...
+  case UploadType.ChatFile:  // value = 13
+    return storageConfig().privateBucket;
+};
+
+static readonly getDir = (type: UploadType) => {
+  // ...
+  case UploadType.ChatFile:
+    return 'chat-file';
+};
+```
+
+Using the private bucket means:
+- No public URLs are generated; all read access goes through the backend.
+- The presign endpoint generates a short-lived PUT URL so the client can upload the binary directly to MinIO, bypassing the backend for the transfer itself.
+- `downloadFile` in `ChatFileService` streams bytes server-side at extraction time only.
+
+---
+
+## 5. OpenAPI Contract
+
+### Chat File Endpoints
+
+Defined in `packages/openapi/src/chat-file/index.ts`.
+
+```
+GET    /{baseId}/chat-files           → IChatFileVo[]
+POST   /{baseId}/chat-files           → IChatFileVo        body: ISaveChatFileRo
+DELETE /{baseId}/chat-files/{fileId}  → null
+```
+
+> Paths do **not** include `/api`. The axios instance (`packages/openapi/src/axios.ts`) sets `baseURL: '/api'`, so paths are relative to that prefix. Duplicating `/api` would produce a 404.
+
+#### `ISaveChatFileRo`
+
+```typescript
+{
+  token:    string   // presign token from /api/attachments/signature
+  name:     string   // original filename
+  size:     number   // bytes
+  mimetype: string
+  path:     string   // storage object path from /api/attachments/notify
+}
+```
+
+#### `IChatFileVo`
+
+```typescript
+{
+  id:          string
+  token:       string
+  name:        string
+  size:        number   // BigInt coerced to number
+  mimetype:    string
+  path:        string
+  baseId:      string
+  createdBy:   string
+  createdTime: string   // ISO 8601
+}
+```
+
+### AI Stream Endpoint
+
+Defined in `packages/openapi/src/ai/generate-stream.ts`.
+
+```
+POST /api/{baseId}/ai/generate-stream
+```
+
+```typescript
+// request body  (IAiGenerateRo)
+{
+  prompt:      string
+  task?:       Task
+  modelKey?:   string
+  fileTokens?: string[]   // tokens of selected chat files
+}
+```
+
+---
+
+## 6. Backend Module
+
+### Module Wiring
+
+```
+AppModule
+├── ChatFileModule          (apps/nestjs-backend/src/features/chat-file/chat-file.module.ts)
+│   ├── imports:    StorageModule          (provides StorageAdapter via Symbol.for('ObjectStorage'))
+│   ├── controller: ChatFileController
+│   ├── provider:   ChatFileService
+│   └── exports:    ChatFileService
+│
+└── AiModule                (apps/nestjs-backend/src/features/ai/ai.module.ts)
+    ├── imports:    SettingModule, ChatFileModule
+    ├── controller: AiController
+    └── provider:   AiService              (injects ChatFileService)
+```
+
+### `ChatFileController`
+
+```
+@Controller('api/:baseId/chat-files')
+
+GET    /           @Permissions('base|read')    → chatFileService.listFiles(baseId)
+POST   /           @Permissions('base|read')    → chatFileService.saveFile(baseId, body)
+                   body validated with ZodValidationPipe(saveChatFileRoSchema)
+DELETE /:fileId    @Permissions('base|delete')  → chatFileService.deleteFile(baseId, fileId)
+```
+
+### `ChatFileService` — Public API
+
+| Method | Description |
+|--------|-------------|
+| `listFiles(baseId)` | Returns all non-deleted files for a base, newest first. `BigInt(size)` is coerced to `Number`. |
+| `saveFile(baseId, dto)` | Validates MIME type and size, writes a DB row. Throws `CustomHttpException(VALIDATION_ERROR)` on failure. |
+| `deleteFile(baseId, fileId)` | Soft-deletes the DB row first, then best-effort removes the object from MinIO. Storage errors are caught and logged. |
+| `buildFileContext(tokens[])` | **Pre-agent entry point.** Delegates to `extractTextFromTokens`, returns the formatted text block or `null`. |
+| `extractTextFromTokens(tokens[])` | Fetches DB records by token, calls `extractTextFromFile` per record, joins results with `\n\n`. Failures for individual files are caught and logged; extraction continues. |
+
+### `ChatFileService` — Private Methods
+
+| Method | Description |
+|--------|-------------|
+| `extractTextFromFile(bucket, path, mimetype, filename)` | Downloads the object from MinIO, converts stream to buffer, dispatches to parser by MIME type. |
+| `streamToBuffer(stream)` | Drains a Node.js `Readable` into a `Buffer` using `on('data')` / `on('end')` / `on('error')`. |
+
+### `AiService` — File-Related Methods
+
+| Method | Description |
+|--------|-------------|
+| `injectFileContext(prompt, fileTokens)` | Private. Calls `chatFileService.buildFileContext`, wraps result in `<file_context>` tags, prepends to prompt. Returns the original prompt unchanged if tokens are empty or all extractions fail. |
+| `generateStream(baseId, ro, response)` | Public. Resolves model instance → calls `injectFileContext` → runs agent → pipes stream to HTTP response. |
+
+---
+
+## 7. Frontend Component
+
+Single file: `apps/nextjs-app/src/features/app/blocks/table/chat-panel/ChatPanel.tsx`
+
+### Component Props
+
+```typescript
+interface IChatPanelProps {
+  baseId: string;
+}
+```
+
+### State
+
+| State | Type | Description |
+|-------|------|-------------|
+| `activeTab` | `'chat' \| 'files'` | Which panel tab is active |
+| `messages` | `IMessage[]` | Local conversation history (not persisted) |
+| `isStreaming` | `boolean` | True while a stream response is in flight; blocks re-submission |
+| `isThinking` | `boolean` | True from submission until the first chunk arrives; controls reasoning shimmer |
+| `uploadingFiles` | `IUploadingFile[]` | Per-session upload queue; each entry tracks progress and token |
+| `uploadError` | `string \| null` | User-visible error from MIME/size validation or upload failure |
+| `selectedFileIds` | `Set<string>` | IDs of library files checked for context; persists across messages |
+| `contextDismissed` | `boolean` | Whether the grid-row context banner was dismissed |
+| `panelWidth` | `number` | Drag-resized panel width in px |
+
+### React Query State
+
+| Key | Fetcher | Description |
+|-----|---------|-------------|
+| `['chatFiles', baseId]` | `listChatFiles(baseId)` | Server-side file library; loaded on panel open, refreshed after upload or delete |
+| `ReactQueryKeys.gridSelection(baseId)` | Grid store | Selected table rows used as data context alongside files |
+
+### Key Derived Value
+
+```typescript
+const selectedFiles = useMemo(
+  () => chatFiles.filter((f) => selectedFileIds.has(f.id)),
+  [chatFiles, selectedFileIds]
+);
+```
+
+Automatically handles the deleted-while-selected case: once a file leaves `chatFiles` (React Query cache invalidated), it disappears from `selectedFiles` without any cleanup.
+
+### File Picker UI
+
+The `Files` icon button in `PromptInputTools` renders only when `chatFiles.length > 0`.
+
+```
+PromptInputTools
+├── PromptInputButton (Paperclip)   — triggers fileInputRef.current.click()
+└── Popover  [only when chatFiles.length > 0]
+    ├── PopoverTrigger: PromptInputButton
+    │     └── Files icon (turns text-primary when selection is non-empty)
+    │         + badge showing selectedFileIds.size
+    └── PopoverContent (w-72, side="top", align="start")
+        ├── Header: "Attach files as context"
+        └── ScrollArea (max-h-56)
+            └── for each chatFile:
+                  label [ Checkbox | FileIcon | truncated name | size ]
+```
+
+Selected files and in-flight uploads both appear as dismissible chips above the input:
+
+```
+{selectedFiles.map → chip [ FileIcon | name | ✕ (calls toggleFileSelection) ]}
+{uploadingFiles.map → chip [ FileIcon | name | spinner/error | ✕ (calls removeUploadingFile) ]}
+```
+
+---
+
+## 8. Call Chains
+
+### 8.1 Upload a New File
+
+```
+User clicks Paperclip button
+  → fileInputRef.current.click()
+  → <input type="file" onChange={handleFileInputChange}>
+  → for each file: uploadFile(file)
+
+uploadFile(file)
+  ├── [client] reject if MIME type not in ALLOWED_MIME_TYPES
+  ├── [client] reject if file.size > 10 MB
+  ├── setUploadingFiles([...prev, { id: tempId, uploading: true }])
+  │
+  ├── POST /api/attachments/signature
+  │       { type: 13 (ChatFile), contentLength, contentType, baseId }
+  │     ← { url, uploadMethod, token, requestHeaders }
+  │
+  ├── PUT <presigned MinIO URL>    ← binary, direct browser → MinIO (no backend)
+  │
+  ├── POST /api/attachments/notify/<token>   { filename }
+  │     ← { path, size, mimetype }
+  │
+  └── POST /api/<baseId>/chat-files
+            { token, name, size, mimetype, path }
+          → ChatFileController.saveFile
+          → ChatFileService.saveFile
+              ├── [server] reject if MIME type not in ALLOWED_MIME_TYPES
+              ├── [server] reject if size > 10 MB
+              └── prisma.chatFile.create(...)
+                  ← IChatFileVo
+          → setUploadingFiles: mark entry { uploading: false, token }
+          → refetchFiles()
+```
+
+### 8.2 Select Library Files
+
+```
+User clicks Files button (Popover trigger)
+  → Popover opens
+
+User checks a file's Checkbox
+  → onCheckedChange → toggleFileSelection(file.id)
+      → setSelectedFileIds (add or remove from Set)
+  → selectedFiles recomputes via useMemo
+  → chip appears/disappears above the input
+  → badge count on Files button updates
+
+No network call is made during selection.
+The token is already in the chatFiles React Query cache.
+```
+
+### 8.3 Send a Message with File Context
+
+```
+User types message → presses Enter or clicks Send
+  → handleSubmit(message)
+
+handleSubmit
+  ├── persistedTokens = chatFiles
+  │     .filter(f => selectedFileIds.has(f.id))
+  │     .map(f => f.token)
+  ├── uploadingTokens = uploadingFiles
+  │     .filter(f => !f.uploading && !f.error && f.token)
+  │     .map(f => f.token)
+  ├── fileTokens = [...new Set([...persistedTokens, ...uploadingTokens])]
+  ├── push userMsg + assistantPlaceholder into messages
+  ├── setUploadingFiles([])          ← clear just-uploaded queue
+  └── streamAssistantReply(text, history, fileTokens)
+
+streamAssistantReply
+  ├── build prompt: preamble + conversation history + "User: <text>\nAssistant:"
+  └── fetch POST /api/<baseId>/ai/generate-stream
+            { prompt, fileTokens }        ← native fetch for streaming
+            (AbortController attached)
+
+AiController.generateStream
+  └── AiService.generateStream(baseId, { prompt, fileTokens }, response)
+
+AiService.generateStream
+  ├── getGenerationModelInstance(baseId, ro)
+  │     → resolves model key → SDK language model instance
+  ├── injectFileContext(prompt, fileTokens)       ← pre-agent step
+  │     └── ChatFileService.buildFileContext(tokens)
+  │           └── ChatFileService.extractTextFromTokens(tokens)
+  │                 ├── prisma.chatFile.findMany(
+  │                 │     { where: { token: { in: tokens }, deletedTime: null } }
+  │                 │   )
+  │                 └── for each record:
+  │                       extractTextFromFile(bucket, path, mimetype, name)
+  │                         ├── storageAdapter.downloadFile(bucket, path) → Readable
+  │                         ├── streamToBuffer(stream)                    → Buffer
+  │                         └── dispatch by mimetype:
+  │                               'application/pdf'       → pdf-parse(buffer).text
+  │                               'application/msword'
+  │                               '...wordprocessingml…'  → mammoth.extractRawText().value
+  │                               text/*                  → buffer.toString('utf-8')
+  │                 ← "--- File: a.pdf ---\n<text>\n\n--- File: b.txt ---\n<text>"
+  │           ← string | null
+  │     ← "<file_context>\n...\n</file_context>\n\n<original prompt>"
+  └── runGeneralInfoAgent(modelInstance, enrichedPrompt)
+        → streamText(...)
+        → result.pipeTextStreamToResponse(response)
+
+Browser
+  ├── reader = res.body.getReader()
+  └── readStream(reader, appendChunk)
+        → TextDecoder.decode(chunk)
+        → setMessages: append to last assistant message content
+```
+
+### 8.4 Delete a File
+
+```
+User clicks Trash icon on a file row in the Files tab
+  → handleDeleteFile(fileId)
+      → DELETE /api/<baseId>/chat-files/<fileId>
+
+ChatFileController.deleteFile
+  → ChatFileService.deleteFile(baseId, fileId)
+      ├── prisma.chatFile.findFirst(
+      │     { where: { id: fileId, baseId, deletedTime: null } }
+      │   )
+      │   ← null → throw NotFoundException
+      ├── prisma.chatFile.update(
+      │     { where: { id: fileId }, data: { deletedTime: new Date() } }
+      │   )                                ← committed before storage call
+      └── storageAdapter.deleteFile(bucket, record.path)
+            error → logger.warn (not rethrown)
+
+  → queryClient.invalidateQueries(['chatFiles', baseId])
+        → React Query refetches → chatFiles cache updated
+        → selectedFiles recomputes → chip for this file disappears automatically
+```
+
+### 8.5 List Files (Panel Open)
+
+```
+ChatPanel mounts  OR  status transitions from 'close'
+  → useQuery(['chatFiles', baseId]) becomes enabled
+      → GET /api/<baseId>/chat-files
+
+ChatFileController.listFiles
+  → ChatFileService.listFiles(baseId)
+      → prisma.chatFile.findMany(
+            { where: { baseId, deletedTime: null }, orderBy: { createdTime: 'desc' } }
+          )
+      → map: BigInt(size) → Number(size)
+      ← IChatFileVo[]
+
+Files tab badge and file picker popover both reflect the live count.
+```
+
+---
+
+## 9. File Selection & Context Injection Pipeline
+
+### Token Merging (Frontend)
+
+```typescript
+// ChatPanel.tsx — handleSubmit
+const persistedTokens = chatFiles
+  .filter((f) => selectedFileIds.has(f.id))
+  .map((f) => f.token);
+
+const uploadingTokens = uploadingFiles
+  .filter((f) => !f.uploading && !f.error && f.token)
+  .map((f) => f.token as string);
+
+// Dedup: a file uploaded this session then also selected from picker counts once
+const fileTokens = [...new Set([...persistedTokens, ...uploadingTokens])];
+```
+
+### Pre-Agent Injection (Backend)
+
+```typescript
+// ai.service.ts
+private async injectFileContext(
+  prompt: string,
+  fileTokens: string[] | undefined
+): Promise<string> {
+  if (!fileTokens?.length) return prompt;
+  const context = await this.chatFileService.buildFileContext(fileTokens);
+  if (!context) return prompt;
+  return `<file_context>\n${context}\n</file_context>\n\n${prompt}`;
+}
+```
+
+```typescript
+// chat-file.service.ts
+async buildFileContext(tokens: string[]): Promise<string | null> {
+  const text = await this.extractTextFromTokens(tokens);
+  return text || null;
+}
+```
+
+### Resulting Prompt Shape (Multi-File Example)
+
+```
+<file_context>
+--- File: report.pdf ---
+[extracted text from PDF]
+
+--- File: notes.txt ---
+[raw UTF-8 content]
+</file_context>
+
+You are a helpful data assistant.
+
+User: Summarise the key findings from the report.
+Assistant:
+```
+
+---
+
+## 10. Access Control
+
+Every HTTP request passes through `AuthGuard` and `PermissionGuard` (registered globally in `GlobalModule` via `APP_GUARD`).
+
+| Endpoint | Required permission | Rationale |
+|----------|--------------------|-----------
+| `GET  /{baseId}/chat-files` | `base\|read` | Read-only; listing does not expose file contents |
+| `POST /{baseId}/chat-files` | `base\|read` | Registering an already-uploaded object reference is a read-level action; binary upload occurred directly against MinIO via a presigned URL gated by the attachments module |
+| `DELETE /{baseId}/chat-files/{fileId}` | `base\|delete` | Destructive; requires explicit delete permission |
+
+**Base scoping** is enforced at the service layer. `findFirst({ where: { id: fileId, baseId } })` ensures a request with a valid `fileId` but an incorrect `baseId` returns `NotFoundException`. This avoids leaking the existence of files in other bases via timing or error-code differences.
+
+**Storage access control**: the private bucket is not accessible without backend credentials. Even if a presigned PUT URL were intercepted, it allows only a single write operation. Reading file content requires going through `ChatFileService.extractTextFromFile`, which is only invoked by the authenticated AI stream endpoint.
+
+---
+
+## 11. File Type Handling
+
+### Allowed Types
+
+Enforced at **both** client (MIME check + `accept` attribute) and server (`saveFile` validation).
+
+| MIME Type | Extension(s) | Extraction Method |
+|-----------|-------------|-------------------|
+| `application/pdf` | `.pdf` | `pdf-parse(buffer).text` |
+| `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | `.docx` | `mammoth.extractRawText({ buffer }).value` |
+| `application/msword` | `.doc` | `mammoth.extractRawText({ buffer }).value` |
+| `text/plain` | `.txt` | `buffer.toString('utf-8')` |
+| `text/markdown` | `.md` | `buffer.toString('utf-8')` |
+| `text/html` | `.html`, `.htm` | `buffer.toString('utf-8')` |
+| `text/csv` | `.csv` | `buffer.toString('utf-8')` |
+
+**Size limit**: 10 MB. Validated client-side first (fast feedback), then server-side in `saveFile` (authoritative guard).
+
+### Why `pdf-parse` and `mammoth` Are Lazy-Required
+
+Both libraries are heavy (C extension bindings, large WASM bundles). Loading them at module startup would increase cold-start time for every request. `require()` inside the MIME-type branch loads them once on first use and caches them in Node's module registry, paying the cost only when a PDF or Word file actually needs parsing.
+
+### Why Text Types Are Returned as Raw UTF-8
+
+HTML, CSV, and Markdown are text-serialisable by definition. The LLM handles HTML tags and CSV delimiters well enough for typical document Q&A. Adding a parsing step (strip tags, parse rows) would require additional dependencies and would risk losing structural cues the model might find useful. `extractTextFromFile` is the single extension point if richer extraction is needed for a specific type.
+
+---
+
+## 12. Error Handling
+
+| Scenario | Client behaviour | Server behaviour |
+|----------|-----------------|-----------------|
+| Invalid MIME type on upload | Shows error message; upload never starts | `saveFile` throws `CustomHttpException(VALIDATION_ERROR)` |
+| File exceeds 10 MB | Shows error message; upload never starts | `saveFile` throws `CustomHttpException(VALIDATION_ERROR)` |
+| MinIO PUT fails | Chip shows `{ error: 'Upload failed' }` | No DB row is created; token is never saved |
+| MinIO DELETE fails on soft-delete | Invisible to user | `logger.warn`; DB soft-delete already committed; object becomes orphaned |
+| Text extraction fails for one file | — | File is skipped with `logger.warn`; remaining files are still extracted; partial context is injected |
+| File not found / wrong base on delete | — | `NotFoundException`; no DB or storage operation runs |
+| User stops generation mid-stream | `AbortController.abort()` → fetch rejects with `AbortError` | Stream cancelled at SDK level |
+| Empty assistant message on abort | Removed from local `messages` array | — |
+
+---
+
+## 13. Design Decisions
+
+### Why a Separate `chat_file` Table (Not Reusing `attachments`)
+
+The existing `attachments` table is tightly coupled to table records: every row references a `fieldId`, `recordId`, and `tableId`, and its lifecycle follows those records. Chat files are base-scoped, not record-scoped, and need independent creation and deletion semantics. A separate table avoids polluting the attachment query paths, makes the `baseId` scoping invariant explicit in the schema, and allows the feature to evolve (e.g. adding a `description` column) without affecting record attachments.
+
+### Why Tokens as the Cross-System Reference Key
+
+The presign token is the earliest stable identifier for a file — it exists before the DB row is created and before the object lands in MinIO. Passing the token through all four steps (presign → PUT → notify → save) keeps the upload chain stateless from the client's perspective. The backend can correlate without a session or temporary ID, and the same token can be safely passed in the AI request payload months later.
+
+### Why Library Selection Persists Across Messages
+
+This mirrors how major AI chat products handle file context. If a user is analysing a document over several exchanges, re-selecting it for every message is unnecessary friction. The selection is explicit (checkbox) and always visible (chips), so it is never ambiguous that context is attached. The just-uploaded queue is cleared after each submit because uploading a new file mid-conversation is typically a one-off action; once uploaded, the file is available via library selection for all future messages.
+
+### Why Two Upload Paths Coexist
+
+| Path | Use case |
+|------|---------|
+| Just-uploaded (`uploadingFiles`) | Pick-and-send in a single action; zero pre-planning; upload progress visible in real time |
+| Library selection (`selectedFileIds`) | Recurring analysis of a stored document; cross-session context; no re-upload needed |
+
+Token deduplication at submit time (`new Set`) means a file in both states simultaneously is harmless.
+
+### Why `<file_context>` XML Tags in the Prompt
+
+XML-delimited sections are reliably parsed by modern LLMs as distinct input regions. Without a delimiter, injected file text blends into the user's question, causing misattribution — the model may treat extracted document sentences as part of the user's instructions. The `<file_context>` wrapper makes the content boundary unambiguous and is consistent with the tool-call result pattern recommended by Anthropic's prompt-engineering guidelines.
+
+### Why `buildFileContext` and `injectFileContext` Are Separate Methods in Separate Services
+
+`buildFileContext` lives in `ChatFileService` and owns the **parsing concern**: it knows about storage, MIME types, DB records, and how to format the per-file blocks. `injectFileContext` lives in `AiService` and owns the **prompt-engineering concern**: it decides the XML envelope format, where in the prompt context is inserted, and what to do when no context is available.
+
+Keeping these in their own services means:
+- The parsing step is independently testable (`extractTextFromTokens` is covered by unit tests that mock the storage adapter without involving the AI service at all).
+- The prompt injection format can change (e.g. switching from XML to Markdown fences) without touching file storage logic.
+- `ChatFileService` can be injected by other future services (e.g. a search endpoint) without pulling in AI-specific formatting.

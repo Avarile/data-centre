@@ -391,6 +391,20 @@ export class AiService {
     return await this.getModelInstance(modelKey, config.llmProviders);
   }
 
+  /**
+   * Pre-agent step: parses uploaded files and wraps their extracted text in
+   * XML delimiters so the LLM can clearly separate context from the user prompt.
+   */
+  private async injectFileContext(
+    prompt: string,
+    fileTokens: string[] | undefined
+  ): Promise<string> {
+    if (!fileTokens?.length) return prompt;
+    const context = await this.chatFileService.buildFileContext(fileTokens);
+    if (!context) return prompt;
+    return `<file_context>\n${context}\n</file_context>\n\n${prompt}`;
+  }
+
   async generateStream(
     baseId: string,
     aiGenerateRo: IAiGenerateRo,
@@ -398,17 +412,8 @@ export class AiService {
   ): Promise<void> {
     const { prompt, fileTokens } = aiGenerateRo;
     const modelInstance = await this.getGenerationModelInstance(baseId, aiGenerateRo);
-
-    let effectivePrompt = prompt;
-    if (fileTokens?.length) {
-      const fileContext = await this.chatFileService.extractTextFromTokens(fileTokens);
-      if (fileContext) {
-        effectivePrompt = `The following files have been provided as context:\n\n${fileContext}\n\n${prompt}`;
-      }
-    }
-
-    const result = await runGeneralInfoAgent(modelInstance, effectivePrompt);
-
+    const enrichedPrompt = await this.injectFileContext(prompt, fileTokens);
+    const result = await runGeneralInfoAgent(modelInstance, enrichedPrompt);
     result.pipeTextStreamToResponse(response);
   }
 

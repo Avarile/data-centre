@@ -115,6 +115,17 @@ export class ChatFileService {
     }
   }
 
+  /**
+   * Pre-agent parsing entry point: fetches file records by token, parses each
+   * according to MIME type, and returns a formatted block ready for LLM injection.
+   * Returns null when there are no tokens or all extractions fail.
+   */
+  async buildFileContext(tokens: string[]): Promise<string | null> {
+    if (!tokens.length) return null;
+    const text = await this.extractTextFromTokens(tokens);
+    return text || null;
+  }
+
   async extractTextFromTokens(tokens: string[]): Promise<string> {
     if (!tokens.length) return '';
 
