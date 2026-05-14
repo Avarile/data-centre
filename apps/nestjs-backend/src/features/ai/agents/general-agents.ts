@@ -4,6 +4,7 @@ import * as path from 'path';
 import { promisify } from 'util';
 import type { LanguageModel } from 'ai';
 import { tool, ToolLoopAgent } from 'ai';
+import { Pool } from 'pg';
 import { z } from 'zod';
 
 const execAsync = promisify(exec);
@@ -18,9 +19,18 @@ interface ISandbox {
     opts: { withFileTypes: true }
   ): Promise<{ name: string; isDirectory(): boolean }[]>;
   exec(command: string): Promise<{ stdout: string; stderr: string }>;
+  query(sql: string, params?: unknown[]): Promise<{ rows: unknown[]; rowCount: number }>;
 }
 
 function createNodeSandbox(workingDirectory: string): ISandbox {
+  const databaseUrl =
+    process.env.PRISMA_DATA_DATABASE_URL ??
+    process.env.PRISMA_META_DATABASE_URL ??
+    process.env.PRISMA_DATABASE_URL ??
+    process.env.DATABASE_URL;
+
+  const pool = databaseUrl ? new Pool({ connectionString: databaseUrl }) : null;
+
   return {
     async readFile(filePath) {
       const resolved = path.isAbsolute(filePath) ? filePath : path.join(workingDirectory, filePath);
@@ -34,6 +44,12 @@ function createNodeSandbox(workingDirectory: string): ISandbox {
 
     async exec(command) {
       return execAsync(command, { cwd: workingDirectory });
+    },
+
+    async query(sql, params = []) {
+      if (!pool) throw new Error('No database connection string found in environment');
+      const result = await pool.query(sql, params as unknown[]);
+      return { rows: result.rows, rowCount: result.rowCount ?? 0 };
     },
   };
 }
@@ -200,6 +216,33 @@ const bashTool = tool({
   },
 });
 
+const queryDatabaseTool = tool({
+  description:
+    'Execute a read-only SELECT query directly against the PostgreSQL database. ' +
+    'Use $1, $2, ... placeholders for parameters. ' +
+    'Prefer this over the bash scripts when you need joins, aggregations, or schema introspection.',
+  inputSchema: z.object({
+    sql: z.string().describe('A SELECT SQL statement with positional placeholders ($1, $2, ...)'),
+    params: z
+      .array(z.union([z.string(), z.number(), z.boolean(), z.null()]))
+      .optional()
+      .describe('Bound parameter values for the placeholders'),
+  }),
+  execute: async ({ sql, params = [] }, { experimental_context: experimentalContext }) => {
+    const { sandbox } = experimentalContext as { sandbox: ISandbox; skills: ISkillMetadata[] };
+
+    if (!/^\s*SELECT\b/i.test(sql.trimStart())) {
+      return { error: 'Only SELECT statements are allowed via queryDatabase' };
+    }
+
+    try {
+      return await sandbox.query(sql, params);
+    } catch (err) {
+      return { error: `Query failed: ${(err as Error).message}` };
+    }
+  },
+});
+
 // ─── Call options schema ──────────────────────────────────────────────────────
 
 const callOptionsSchema = z.object({
@@ -250,11 +293,26 @@ When executing database scripts always:
 - Use field IDs (fldXXX) for filter and orderBy parameters.
 - Use display names for record field values (fieldKeyType=name is automatic).
 - Resolve link field record IDs with lookup-link-id.js before creating or updating records.
-- Never write to READ-ONLY fields (record_id, created_at, rollup fields).`,
+- Never write to READ-ONLY fields (record_id, created_at, rollup fields).
+
+You also have a \`queryDatabase\` tool for read-only SQL queries directly against the
+PostgreSQL database. Use it when you need:
+- Joins across multiple tables
+- Aggregations (COUNT, SUM, AVG, GROUP BY)
+- Schema introspection (information_schema.tables / columns)
+- Queries not easily expressed through the bash scripts
+
+The database uses Teable's internal schema. Key tables include:
+  - "record"      — raw record data (JSON fields column)
+  - "table_meta"  — table metadata
+  - "space" / "base" — workspace hierarchy
+Always use parameterised queries ($1, $2, ...) and never include user-supplied
+strings directly in SQL.`,
     tools: {
       loadSkill: loadSkillTool,
       readFile: readFileTool,
       bash: bashTool,
+      queryDatabase: queryDatabaseTool,
     },
     callOptionsSchema,
     maxRetries: 3,
