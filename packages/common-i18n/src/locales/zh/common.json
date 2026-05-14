@@ -1458,5 +1458,19 @@
     "title": "邮件接收触发器（IMAP）上线",
     "url": "https://help.teable.ai/en/changelog#apr-28-2026",
     "id": "changelog-2026-04-28-new-trigger-when-email-receive-imap"
+  },
+  "ai": {
+    "chat": {
+      "title": "AI 对话",
+      "fullscreen": "全屏",
+      "exitFullscreen": "退出全屏",
+      "expand": "展开",
+      "collapse": "收起",
+      "emptyStateHeadline": "今天有什么可以帮您的？",
+      "emptyState": "随时询问关于数据的问题。",
+      "inputPlaceholder": "提问…（回车发送）",
+      "errorMessage": "出错了，请重试。",
+      "rowsSelected": "已选择 {{count}} 行作为上下文"
+    }
   }
 }

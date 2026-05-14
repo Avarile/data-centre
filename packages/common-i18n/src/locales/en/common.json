@@ -1461,5 +1461,19 @@
     "title": "New Trigger: When Email Receive (IMAP)",
     "url": "https://help.Cybernetics.ai/en/changelog#apr-28-2026",
     "id": "changelog-2026-04-28-new-trigger-when-email-receive-imap"
+  },
+  "ai": {
+    "chat": {
+      "title": "AI Chat",
+      "fullscreen": "Fullscreen",
+      "exitFullscreen": "Exit fullscreen",
+      "expand": "Expand",
+      "collapse": "Collapse",
+      "emptyStateHeadline": "How can I help you today?",
+      "emptyState": "Ask anything about your data.",
+      "inputPlaceholder": "Ask a question… (Enter to send)",
+      "errorMessage": "Something went wrong. Please try again.",
+      "rowsSelected": "{{count}} rows selected as context"
+    }
   }
 }

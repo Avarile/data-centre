@@ -1678,6 +1678,20 @@ export type I18nTranslations = {
             "idleTimeout": string;
             "danglingToolUse": string;
         };
+        "ai": {
+            "chat": {
+                "title": string;
+                "fullscreen": string;
+                "exitFullscreen": string;
+                "expand": string;
+                "collapse": string;
+                "emptyStateHeadline": string;
+                "emptyState": string;
+                "inputPlaceholder": string;
+                "errorMessage": string;
+                "rowsSelected": string;
+            };
+        };
         "clickToCopyTooltip": string;
         "copiedTooltip": string;
         "hiddenFieldCount_one": string;

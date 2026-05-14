@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, MessageSquare, X } from '@teable/icons';
+import { Maximize2, MessageSquare, Minimize2, X } from '@teable/icons';
 import { aiGenerateStream } from '@teable/openapi';
 import { ReactQueryKeys } from '@teable/sdk';
 import { Button } from '@teable/ui-lib/shadcn';
+import { Sparkles } from 'lucide-react';
 import { useTranslation } from 'next-i18next';
 import { Resizable } from 're-resizable';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -31,6 +32,7 @@ import {
   ReasoningContent,
   ReasoningTrigger,
 } from '../../../../../components/ai-elements/reasoning';
+import { Shimmer } from '../../../../../components/ai-elements/shimmer';
 import { useChatPanelStore } from '../../../components/sidebar/useChatPanelStore';
 import { useGridSearchStore } from '../../view/grid/useGridSearchStore';
 
@@ -46,7 +48,6 @@ interface IGridSelection {
 }
 
 const PANEL_DEFAULT_WIDTH = 320;
-const PANEL_EXPANDED_WIDTH = 560;
 
 async function readStream(
   reader: ReadableStreamDefaultReader<Uint8Array>,
@@ -76,9 +77,7 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [contextDismissed, setContextDismissed] = useState(false);
-  const [panelWidth, setPanelWidth] = useState(
-    status === 'expanded' ? PANEL_EXPANDED_WIDTH : PANEL_DEFAULT_WIDTH
-  );
+  const [panelWidth, setPanelWidth] = useState(PANEL_DEFAULT_WIDTH);
   const abortRef = useRef<AbortController | null>(null);
 
   const { data: gridSelection } = useQuery<IGridSelection | null>({
@@ -120,10 +119,6 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
       setContextDismissed(false);
     }
   }, [gridSelection?.timestamp, gridSelection?.addToChat]);
-
-  useEffect(() => {
-    setPanelWidth(status === 'expanded' ? PANEL_EXPANDED_WIDTH : PANEL_DEFAULT_WIDTH);
-  }, [status]);
 
   useEffect(() => {
     return () => {
@@ -221,13 +216,15 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
 
   if (status === 'close') return null;
 
+  const isFullscreen = status === 'expanded';
+
   return (
     <Resizable
       className="ml-1 flex flex-col bg-background"
-      size={{ width: panelWidth, height: '100%' }}
-      maxWidth="60%"
+      size={{ width: isFullscreen ? '100%' : panelWidth, height: '100%' }}
+      maxWidth={isFullscreen ? '100%' : '60%'}
       minWidth="280px"
-      enable={{ left: true }}
+      enable={{ left: !isFullscreen }}
       handleClasses={{ left: 'group' }}
       handleStyles={{ left: { width: '4px', left: '0' } }}
       handleComponent={{
@@ -250,12 +247,12 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
             variant="ghost"
             size="xs"
             onClick={toggleExpanded}
-            title={status === 'expanded' ? t('ai.chat.collapse') : t('ai.chat.expand')}
+            title={status === 'expanded' ? t('ai.chat.exitFullscreen') : t('ai.chat.fullscreen')}
           >
             {status === 'expanded' ? (
-              <ChevronRight className="size-4" />
+              <Minimize2 className="size-4" />
             ) : (
-              <ChevronLeft className="size-4" />
+              <Maximize2 className="size-4" />
             )}
           </Button>
           <Button variant="ghost" size="xs" onClick={close} title={t('actions.close')}>
@@ -287,11 +284,15 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
       <Conversation>
         <ConversationContent>
           {messages.length === 0 && (
-            <ConversationEmptyState
-              description={t('ai.chat.emptyState', 'Ask anything about your data.')}
-              icon={<MessageSquare className="size-8 opacity-30" />}
-              title=""
-            />
+            <ConversationEmptyState className="absolute inset-0">
+              <Sparkles className="size-8 text-muted-foreground/40" />
+              <Shimmer className="text-base font-medium" duration={3}>
+                {t('ai.chat.emptyStateHeadline', 'How can I help you today?')}
+              </Shimmer>
+              <p className="text-sm text-muted-foreground">
+                {t('ai.chat.emptyState', 'Ask anything about your data.')}
+              </p>
+            </ConversationEmptyState>
           )}
 
           {messages.map((msg, i) => {
@@ -327,8 +328,8 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
       </Conversation>
 
       {/* Input */}
-      <div className="shrink-0 p-3">
-        <PromptInput onSubmit={handleSubmit}>
+      <div className={isFullscreen ? 'flex shrink-0 justify-center p-3' : 'shrink-0 p-3'}>
+        <PromptInput className={isFullscreen ? 'w-1/3' : undefined} onSubmit={handleSubmit}>
           <PromptInputBody>
             <PromptInputTextarea
               onChange={handleTextChange}
