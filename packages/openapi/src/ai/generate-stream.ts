@@ -19,6 +19,9 @@ export const aiGenerateRoSchema = z.object({
     description: 'Specify an exact model configuration to use',
     example: 'openai@gpt-4o@custom-name',
   }),
+  fileTokens: z.array(z.string()).optional().meta({
+    description: 'Tokens of uploaded chat files to include as context',
+  }),
 });
 
 export type IAiGenerateRo = z.infer<typeof aiGenerateRoSchema>;

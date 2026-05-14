@@ -29,6 +29,7 @@ import type { Response } from 'express';
 import { BaseConfig, IBaseConfig } from '../../configs/base.config';
 import { CustomHttpException } from '../../custom.exception';
 import { PerformanceCacheService } from '../../performance-cache';
+import { ChatFileService } from '../chat-file/chat-file.service';
 import { SettingService } from '../setting/setting.service';
 import { getAdaptedProviderOptions, getTaskModelKey, modelProviders } from './util';
 import { runGeneralInfoAgent } from './agents/general-agents';
@@ -59,7 +60,8 @@ export class AiService {
     private readonly settingService: SettingService,
     private readonly prismaService: PrismaService,
     @BaseConfig() private readonly baseConfig: IBaseConfig,
-    private readonly performanceCacheService: PerformanceCacheService
+    private readonly performanceCacheService: PerformanceCacheService,
+    private readonly chatFileService: ChatFileService
   ) {}
 
   public parseModelKey(modelKey: string) {
@@ -394,15 +396,18 @@ export class AiService {
     aiGenerateRo: IAiGenerateRo,
     response: Response
   ): Promise<void> {
-    const { prompt } = aiGenerateRo;
+    const { prompt, fileTokens } = aiGenerateRo;
     const modelInstance = await this.getGenerationModelInstance(baseId, aiGenerateRo);
 
-    // const result = streamText({
-    //   model: modelInstance,
-    //   prompt: prompt,
-    // });
+    let effectivePrompt = prompt;
+    if (fileTokens?.length) {
+      const fileContext = await this.chatFileService.extractTextFromTokens(fileTokens);
+      if (fileContext) {
+        effectivePrompt = `The following files have been provided as context:\n\n${fileContext}\n\n${prompt}`;
+      }
+    }
 
-    const result = await runGeneralInfoAgent(modelInstance, prompt);
+    const result = await runGeneralInfoAgent(modelInstance, effectivePrompt);
 
     result.pipeTextStreamToResponse(response);
   }

@@ -1,9 +1,19 @@
-import { useQuery } from '@tanstack/react-query';
-import { Maximize2, MessageSquare, Minimize2, X } from '@teable/icons';
-import { aiGenerateStream } from '@teable/openapi';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Maximize2, MessageSquare, Minimize2, Paperclip, Trash2, X } from '@teable/icons';
+import {
+  aiGenerateStream,
+  deleteChatFile,
+  getSignature,
+  listChatFiles,
+  notify,
+  saveChatFile,
+  UploadType,
+} from '@teable/openapi';
+import type { IChatFileVo } from '@teable/openapi';
 import { ReactQueryKeys } from '@teable/sdk';
 import { Button } from '@teable/ui-lib/shadcn';
-import { Sparkles } from 'lucide-react';
+import axios from 'axios';
+import { FileIcon, Sparkles } from 'lucide-react';
 import { useTranslation } from 'next-i18next';
 import { Resizable } from 're-resizable';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -22,6 +32,7 @@ import type { PromptInputMessage } from '../../../../../components/ai-elements/p
 import {
   PromptInput,
   PromptInputBody,
+  PromptInputButton,
   PromptInputFooter,
   PromptInputSubmit,
   PromptInputTextarea,
@@ -36,6 +47,30 @@ import { Shimmer } from '../../../../../components/ai-elements/shimmer';
 import { useChatPanelStore } from '../../../components/sidebar/useChatPanelStore';
 import { useGridSearchStore } from '../../view/grid/useGridSearchStore';
 
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const PANEL_DEFAULT_WIDTH = 320;
+
+const ALLOWED_MIME_TYPES = [
+  'application/pdf',
+  'text/plain',
+  'text/markdown',
+  'text/html',
+  'text/csv',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/msword',
+];
+
+const ALLOWED_EXTENSIONS = '.pdf,.txt,.md,.html,.htm,.csv,.docx,.doc';
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
 interface IMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -47,7 +82,17 @@ interface IGridSelection {
   addToChat?: boolean;
 }
 
-const PANEL_DEFAULT_WIDTH = 320;
+interface IUploadingFile {
+  id: string;
+  name: string;
+  uploading: boolean;
+  error?: string;
+  token?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 async function readStream(
   reader: ReadableStreamDefaultReader<Uint8Array>,
@@ -64,6 +109,16 @@ async function readStream(
   if (tail) onChunk(tail);
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 interface IChatPanelProps {
   baseId: string;
 }
@@ -71,7 +126,10 @@ interface IChatPanelProps {
 export const ChatPanel = ({ baseId }: IChatPanelProps) => {
   const { status, close, toggleExpanded } = useChatPanelStore();
   const { t } = useTranslation('common');
+  const queryClient = useQueryClient();
 
+  // Chat state
+  const [activeTab, setActiveTab] = useState<'chat' | 'files'>('chat');
   const [messages, setMessages] = useState<IMessage[]>([]);
   const [hasText, setHasText] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -80,6 +138,12 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
   const [panelWidth, setPanelWidth] = useState(PANEL_DEFAULT_WIDTH);
   const abortRef = useRef<AbortController | null>(null);
 
+  // File upload state (separate from PromptInput's internal file preview)
+  const [uploadingFiles, setUploadingFiles] = useState<IUploadingFile[]>([]);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Grid selection context
   const { data: gridSelection } = useQuery<IGridSelection | null>({
     queryKey: ReactQueryKeys.gridSelection(baseId),
     queryFn: () => Promise.resolve(null),
@@ -89,6 +153,13 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
 
   const recordMap = useGridSearchStore((state) => state.recordMap);
   const fields = useGridSearchStore((state) => state.fields);
+
+  // File list query
+  const { data: chatFiles = [], refetch: refetchFiles } = useQuery<IChatFileVo[]>({
+    queryKey: ['chatFiles', baseId],
+    queryFn: () => listChatFiles(baseId).then((r) => r.data),
+    enabled: status !== 'close',
+  });
 
   const selectedRowCount =
     gridSelection?.addToChat && !contextDismissed && gridSelection.rows
@@ -126,8 +197,87 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
     };
   }, []);
 
+  // ---------------------------------------------------------------------------
+  // File upload logic
+  // ---------------------------------------------------------------------------
+
+  const uploadFile = useCallback(
+    async (file: File) => {
+      if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+        setUploadError(`File type not allowed. Supported: PDF, TXT, Markdown, HTML, CSV, Word.`);
+        return;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        setUploadError(`File "${file.name}" exceeds 10 MB limit.`);
+        return;
+      }
+
+      const tempId = `${Date.now()}-${file.name}`;
+      setUploadingFiles((prev) => [...prev, { id: tempId, name: file.name, uploading: true }]);
+      setUploadError(null);
+
+      try {
+        // 1. Get presigned URL
+        const sigRes = await getSignature({
+          type: UploadType.ChatFile,
+          contentLength: file.size,
+          contentType: file.type,
+          baseId,
+        });
+        const { url, uploadMethod, token, requestHeaders } = sigRes.data;
+
+        // 2. Upload directly to MinIO
+        const headers = { ...(requestHeaders as Record<string, string>) };
+        delete headers['Content-Length'];
+        await axios({ method: uploadMethod, url, data: file, headers });
+
+        // 3. Notify backend upload complete
+        const notifyRes = await notify(token, undefined, file.name);
+        const { path, size, mimetype } = notifyRes.data;
+
+        // 4. Save chat file reference
+        await saveChatFile(baseId, { token, name: file.name, size, mimetype, path });
+
+        // Mark as uploaded with token
+        setUploadingFiles((prev) =>
+          prev.map((f) => (f.id === tempId ? { ...f, uploading: false, token } : f))
+        );
+
+        // Refresh file list
+        void refetchFiles();
+      } catch {
+        setUploadingFiles((prev) =>
+          prev.map((f) =>
+            f.id === tempId ? { ...f, uploading: false, error: 'Upload failed' } : f
+          )
+        );
+      }
+    },
+    [baseId, refetchFiles]
+  );
+
+  const handleFileInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.currentTarget.files;
+      if (!files) return;
+      for (const file of files) {
+        void uploadFile(file);
+      }
+      e.currentTarget.value = '';
+    },
+    [uploadFile]
+  );
+
+  const removeUploadingFile = useCallback((id: string) => {
+    setUploadingFiles((prev) => prev.filter((f) => f.id !== id));
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // AI streaming
+  // ---------------------------------------------------------------------------
+
   const streamAssistantReply = useCallback(
-    async (userText: string, history: IMessage[]) => {
+    async (userText: string, history: IMessage[], fileTokens: string[]) => {
       const preamble = selectedRecordsContext
         ? `You are a helpful data assistant. The user has selected these records from the table:\n\n${selectedRecordsContext}\n\n`
         : 'You are a helpful data assistant.\n\n';
@@ -156,7 +306,11 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
       };
 
       try {
-        const res = await aiGenerateStream(baseId, { prompt }, controller.signal);
+        const res = await aiGenerateStream(
+          baseId,
+          { prompt, fileTokens: fileTokens.length ? fileTokens : undefined },
+          controller.signal
+        );
         if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
         reader = res.body.getReader();
         await readStream(reader, appendChunk);
@@ -192,6 +346,11 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
       const text = message.text.trim();
       if (!text || isStreaming) return;
 
+      // Collect tokens of successfully uploaded files
+      const fileTokens = uploadingFiles
+        .filter((f) => !f.uploading && !f.error && f.token)
+        .map((f) => f.token as string);
+
       const userMsg: IMessage = { role: 'user', content: text };
       const assistantPlaceholder: IMessage = { role: 'assistant', content: '' };
 
@@ -199,11 +358,14 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
         const next = [...prev, userMsg, assistantPlaceholder];
         setIsStreaming(true);
         setIsThinking(true);
-        streamAssistantReply(text, [...prev, userMsg]);
+        streamAssistantReply(text, [...prev, userMsg], fileTokens);
         return next;
       });
+
+      // Clear the pending upload queue after submitting
+      setUploadingFiles([]);
     },
-    [isStreaming, streamAssistantReply]
+    [isStreaming, streamAssistantReply, uploadingFiles]
   );
 
   const handleStop = useCallback(() => {
@@ -214,9 +376,22 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
     setHasText(e.target.value.trim().length > 0);
   }, []);
 
+  // ---------------------------------------------------------------------------
+  // File management tab — delete
+  // ---------------------------------------------------------------------------
+
+  const handleDeleteFile = useCallback(
+    async (fileId: string) => {
+      await deleteChatFile(baseId, fileId);
+      void queryClient.invalidateQueries({ queryKey: ['chatFiles', baseId] });
+    },
+    [baseId, queryClient]
+  );
+
   if (status === 'close') return null;
 
   const isFullscreen = status === 'expanded';
+  const readyFileTokens = uploadingFiles.filter((f) => !f.uploading && !f.error && f.token);
 
   return (
     <Resizable
@@ -236,6 +411,16 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
         setPanelWidth((prev) => prev + d.width);
       }}
     >
+      {/* Single hidden file input shared by both tabs */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={ALLOWED_EXTENSIONS}
+        multiple
+        className="hidden"
+        onChange={handleFileInputChange}
+      />
+
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between px-3 py-2">
         <div className="flex items-center gap-2">
@@ -261,8 +446,35 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="flex shrink-0 border-b text-sm">
+        <button
+          className={`px-4 py-1.5 font-medium transition-colors ${
+            activeTab === 'chat'
+              ? 'border-b-2 border-primary text-foreground'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+          onClick={() => setActiveTab('chat')}
+        >
+          {t('ai.chat.tabChat', 'Chat')}
+        </button>
+        <button
+          className={`flex items-center gap-1 px-4 py-1.5 font-medium transition-colors ${
+            activeTab === 'files'
+              ? 'border-b-2 border-primary text-foreground'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+          onClick={() => setActiveTab('files')}
+        >
+          {t('ai.chat.tabFiles', 'Files')}
+          {chatFiles.length > 0 && (
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs">{chatFiles.length}</span>
+          )}
+        </button>
+      </div>
+
       {/* Context bar */}
-      {selectedRowCount > 0 && (
+      {activeTab === 'chat' && selectedRowCount > 0 && (
         <div className="flex shrink-0 items-center justify-between bg-accent/50 px-3 py-1.5 text-xs">
           <span className="text-muted-foreground">
             {t('ai.chat.rowsSelected', '{{count}} rows selected as context', {
@@ -280,72 +492,178 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
         </div>
       )}
 
-      {/* Messages */}
-      <Conversation>
-        <ConversationContent>
-          {messages.length === 0 && (
-            <ConversationEmptyState className="absolute inset-0">
-              <Sparkles className="size-8 text-muted-foreground/40" />
-              <Shimmer className="text-base font-medium" duration={3}>
-                {t('ai.chat.emptyStateHeadline', 'How can I help you today?')}
-              </Shimmer>
-              <p className="text-sm text-muted-foreground">
-                {t('ai.chat.emptyState', 'Ask anything about your data.')}
+      {/* ---- CHAT TAB ---- */}
+      {activeTab === 'chat' && (
+        <>
+          <Conversation>
+            <ConversationContent>
+              {messages.length === 0 && (
+                <ConversationEmptyState className="absolute inset-0">
+                  <Sparkles className="size-8 text-muted-foreground/40" />
+                  <Shimmer className="text-base font-medium" duration={3}>
+                    {t('ai.chat.emptyStateHeadline', 'How can I help you today?')}
+                  </Shimmer>
+                  <p className="text-sm text-muted-foreground">
+                    {t('ai.chat.emptyState', 'Ask anything about your data.')}
+                  </p>
+                </ConversationEmptyState>
+              )}
+
+              {messages.map((msg, i) => {
+                const isLastAssistant = msg.role === 'assistant' && i === messages.length - 1;
+                const showThinking = isLastAssistant && isThinking;
+
+                return (
+                  <Message key={i} from={msg.role}>
+                    <MessageContent>
+                      {msg.role === 'user' ? (
+                        msg.content
+                      ) : (
+                        <>
+                          {showThinking && (
+                            <Reasoning isStreaming={isThinking}>
+                              <ReasoningTrigger />
+                              <ReasoningContent>{''}</ReasoningContent>
+                            </Reasoning>
+                          )}
+                          {msg.content && (
+                            <MessageResponse isAnimating={isLastAssistant && isStreaming}>
+                              {msg.content}
+                            </MessageResponse>
+                          )}
+                        </>
+                      )}
+                    </MessageContent>
+                  </Message>
+                );
+              })}
+            </ConversationContent>
+            <ConversationScrollButton />
+          </Conversation>
+
+          {/* Input */}
+          <div className={isFullscreen ? 'flex shrink-0 justify-center p-3' : 'shrink-0 p-3'}>
+            {/* Pending uploaded file chips */}
+            {uploadingFiles.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1">
+                {uploadingFiles.map((f) => (
+                  <div
+                    key={f.id}
+                    className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs ${
+                      f.error
+                        ? 'border-destructive/50 bg-destructive/10 text-destructive'
+                        : 'bg-muted'
+                    }`}
+                  >
+                    <FileIcon className="size-3 shrink-0" />
+                    <span className="max-w-[120px] truncate">{f.name}</span>
+                    {f.uploading && <span className="text-muted-foreground">…</span>}
+                    {f.error && <span className="text-destructive">{f.error}</span>}
+                    <button
+                      className="ml-1 text-muted-foreground hover:text-foreground"
+                      onClick={() => removeUploadingFile(f.id)}
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Upload error */}
+            {uploadError && <p className="mb-2 text-xs text-destructive">{uploadError}</p>}
+
+            <PromptInput className={isFullscreen ? 'w-1/3' : undefined} onSubmit={handleSubmit}>
+              <PromptInputBody>
+                <PromptInputTextarea
+                  onChange={handleTextChange}
+                  placeholder={t('ai.chat.inputPlaceholder', 'Ask a question… (Enter to send)')}
+                />
+              </PromptInputBody>
+              <PromptInputFooter className="justify-end">
+                <PromptInputTools>
+                  <PromptInputButton
+                    tooltip={t('ai.chat.attachFile', 'Attach file')}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Paperclip className="size-4" />
+                  </PromptInputButton>
+                </PromptInputTools>
+                <PromptInputSubmit
+                  disabled={!hasText && !isStreaming}
+                  onStop={handleStop}
+                  status={isStreaming ? 'streaming' : 'ready'}
+                />
+              </PromptInputFooter>
+            </PromptInput>
+
+            {readyFileTokens.length > 0 && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t('ai.chat.filesAttached', '{{count}} file(s) will be included as context', {
+                  count: readyFileTokens.length,
+                })}
               </p>
-            </ConversationEmptyState>
-          )}
+            )}
+          </div>
+        </>
+      )}
 
-          {messages.map((msg, i) => {
-            const isLastAssistant = msg.role === 'assistant' && i === messages.length - 1;
-            const showThinking = isLastAssistant && isThinking;
+      {/* ---- FILES TAB ---- */}
+      {activeTab === 'files' && (
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex shrink-0 items-center justify-between px-3 py-2">
+            <span className="text-xs text-muted-foreground">
+              {t('ai.files.description', 'Files uploaded here are available as AI context.')}
+            </span>
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => fileInputRef.current?.click()}
+              title={t('ai.files.upload', 'Upload file')}
+            >
+              <Paperclip className="size-4" />
+            </Button>
+          </div>
 
-            return (
-              <Message key={i} from={msg.role}>
-                <MessageContent>
-                  {msg.role === 'user' ? (
-                    msg.content
-                  ) : (
-                    <>
-                      {showThinking && (
-                        <Reasoning isStreaming={isThinking}>
-                          <ReasoningTrigger />
-                          <ReasoningContent>{''}</ReasoningContent>
-                        </Reasoning>
-                      )}
-                      {msg.content && (
-                        <MessageResponse isAnimating={isLastAssistant && isStreaming}>
-                          {msg.content}
-                        </MessageResponse>
-                      )}
-                    </>
-                  )}
-                </MessageContent>
-              </Message>
-            );
-          })}
-        </ConversationContent>
-        <ConversationScrollButton />
-      </Conversation>
-
-      {/* Input */}
-      <div className={isFullscreen ? 'flex shrink-0 justify-center p-3' : 'shrink-0 p-3'}>
-        <PromptInput className={isFullscreen ? 'w-1/3' : undefined} onSubmit={handleSubmit}>
-          <PromptInputBody>
-            <PromptInputTextarea
-              onChange={handleTextChange}
-              placeholder={t('ai.chat.inputPlaceholder', 'Ask a question… (Enter to send)')}
-            />
-          </PromptInputBody>
-          <PromptInputFooter className="justify-end">
-            <PromptInputTools />
-            <PromptInputSubmit
-              disabled={!hasText && !isStreaming}
-              onStop={handleStop}
-              status={isStreaming ? 'streaming' : 'ready'}
-            />
-          </PromptInputFooter>
-        </PromptInput>
-      </div>
+          <div className="flex-1 overflow-y-auto px-3 pb-3">
+            {chatFiles.length === 0 ? (
+              <div className="flex h-32 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
+                <FileIcon className="size-8 opacity-40" />
+                <p className="text-sm">{t('ai.files.empty', 'No files uploaded yet.')}</p>
+                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                  {t('ai.files.uploadFirst', 'Upload a file')}
+                </Button>
+              </div>
+            ) : (
+              <ul className="space-y-1">
+                {chatFiles.map((file) => (
+                  <li
+                    key={file.id}
+                    className="flex items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-accent"
+                  >
+                    <FileIcon className="size-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">{file.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatBytes(file.size)} · {file.mimetype.split('/').pop()}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="shrink-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => void handleDeleteFile(file.id)}
+                      title={t('actions.delete')}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
     </Resizable>
   );
 };

@@ -33,6 +33,7 @@ export * from './dashboard';
 export * from './comment';
 export * from './organization';
 export * from './ai';
+export * from './chat-file';
 export * from './integrity';
 export * from './plugin-panel';
 export * from './plugin-context-menu';

@@ -902,3 +902,19 @@ model BaseShare {
   @@index([baseId])
   @@map("base_share")
 }
+
+model ChatFile {
+  id          String    @id @default(cuid())
+  token       String    @unique
+  name        String
+  size        BigInt
+  mimetype    String
+  path        String
+  baseId      String    @map("base_id")
+  createdBy   String    @map("created_by")
+  createdTime DateTime  @default(now()) @map("created_time")
+  deletedTime DateTime? @map("deleted_time")
+
+  @@index([baseId])
+  @@map("chat_file")
+}
