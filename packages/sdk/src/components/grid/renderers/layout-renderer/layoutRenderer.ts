@@ -277,10 +277,12 @@ export const calcCells = (props: ILayoutDrawerProps, renderRegion: RenderRegion)
         fill = cellBgHovered;
       }
 
+      const adjustedY = isRowHovered ? y - 2 : y;
+
       if (isFirstColumn) {
         rowHeaderPropList.push({
           x: 0.5,
-          y: y + 0.5,
+          y: adjustedY + 0.5,
           width: columnInitSize + 0.5,
           height: rowHeight,
           displayIndex: String(displayIndex),
@@ -298,7 +300,7 @@ export const calcCells = (props: ILayoutDrawerProps, renderRegion: RenderRegion)
 
       cellPropList.push({
         x: x + 0.5,
-        y: y + 0.5,
+        y: adjustedY + 0.5,
         width: columnWidth,
         height: rowHeight,
         rowIndex: realRowIndex,
@@ -309,6 +311,7 @@ export const calcCells = (props: ILayoutDrawerProps, renderRegion: RenderRegion)
         spriteManager,
         theme: finalTheme,
         fill: isCellActive ? cellBg : fill ?? cellBg,
+        isRowHovered,
       });
     }
   }
@@ -346,6 +349,7 @@ export const drawCells = (
   const { coordInstance, theme, shouldRerender } = props;
   const { fontFamily, fontSizeSM, fontSizeXS, cellLineColor } = theme;
   const { rowInitSize, freezeRegionWidth, containerWidth, containerHeight } = coordInstance;
+  const hoverShadowColor = 'rgba(0, 0, 0, 0.15)';
 
   const { cellPropList: otherCellPropList, groupRowList } = calcCells(props, RenderRegion.Other);
   const {
@@ -368,19 +372,44 @@ export const drawCells = (
       height: containerHeight - rowInitSize - 1,
     },
     (ctx: CanvasRenderingContext2D) => {
-      freezeCellPropList.forEach((cellProps) => {
-        const { x, y, width, height, fill } = cellProps;
-        drawRect(ctx, {
-          x,
-          y,
-          width,
-          height,
-          fill,
-          stroke: cellLineColor,
+      // Pass 1: non-hovered rows
+      freezeCellPropList
+        .filter((c) => !c.isRowHovered)
+        .forEach(({ x, y, width, height, fill }) => {
+          drawRect(ctx, { x, y, width, height, fill });
+          drawLine(ctx, { x, y, points: [width, 0, width, height], stroke: cellLineColor });
         });
-      });
+
+      // Pass 2: hovered row on top with shadow
+      const hoveredFreezeCells = freezeCellPropList.filter((c) => c.isRowHovered);
+      if (hoveredFreezeCells.length) {
+        ctx.save();
+        ctx.shadowColor = hoverShadowColor;
+        ctx.shadowBlur = 12;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 6;
+        hoveredFreezeCells.forEach(({ x, y, width, height, fill }) => {
+          drawRect(ctx, { x, y, width, height, fill });
+        });
+        ctx.restore();
+        hoveredFreezeCells.forEach(({ x, y, width, height }) => {
+          drawLine(ctx, { x, y, points: [width, 0, width, height], stroke: cellLineColor });
+        });
+      }
+
       ctx.font = `${fontSizeXS}px ${fontFamily}`;
-      rowHeaderPropList.forEach((rowHeaderProps) => drawRowHeader(ctx, rowHeaderProps));
+      rowHeaderPropList.filter((rh) => !rh.isHover).forEach((rh) => drawRowHeader(ctx, rh));
+      const hoveredRowHeaders = rowHeaderPropList.filter((rh) => rh.isHover);
+      if (hoveredRowHeaders.length) {
+        ctx.save();
+        ctx.shadowColor = hoverShadowColor;
+        ctx.shadowBlur = 12;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 6;
+        hoveredRowHeaders.forEach((rh) => drawRowHeader(ctx, rh));
+        ctx.restore();
+      }
+
       freezeGroupRowList.forEach((props) => drawGroupRow(ctx, props));
       groupRowHeaderList.forEach((props) => drawGroupRowHeader(ctx, props));
     }
@@ -396,17 +425,31 @@ export const drawCells = (
       height: containerHeight - rowInitSize - 1,
     },
     (ctx: CanvasRenderingContext2D) => {
-      otherCellPropList.forEach((cellProps) => {
-        const { x, y, width, height, fill } = cellProps;
-        drawRect(ctx, {
-          x,
-          y,
-          width,
-          height,
-          fill,
-          stroke: cellLineColor,
+      // Pass 1: non-hovered rows
+      otherCellPropList
+        .filter((c) => !c.isRowHovered)
+        .forEach(({ x, y, width, height, fill }) => {
+          drawRect(ctx, { x, y, width, height, fill });
+          drawLine(ctx, { x, y, points: [width, 0, width, height], stroke: cellLineColor });
         });
-      });
+
+      // Pass 2: hovered row on top with shadow
+      const hoveredOtherCells = otherCellPropList.filter((c) => c.isRowHovered);
+      if (hoveredOtherCells.length) {
+        ctx.save();
+        ctx.shadowColor = hoverShadowColor;
+        ctx.shadowBlur = 12;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 6;
+        hoveredOtherCells.forEach(({ x, y, width, height, fill }) => {
+          drawRect(ctx, { x, y, width, height, fill });
+        });
+        ctx.restore();
+        hoveredOtherCells.forEach(({ x, y, width, height }) => {
+          drawLine(ctx, { x, y, points: [width, 0, width, height], stroke: cellLineColor });
+        });
+      }
+
       groupRowList.forEach((props) => drawGroupRow(ctx, props));
     }
   );
@@ -423,9 +466,8 @@ export const drawCells = (
       },
       (ctx: CanvasRenderingContext2D) => {
         ctx.font = `${fontSizeSM}px ${fontFamily}`;
-        freezeCellPropList.forEach((cellProps) => {
-          drawCellContent(ctx, cellProps);
-        });
+        freezeCellPropList.filter((c) => !c.isRowHovered).forEach((c) => drawCellContent(ctx, c));
+        freezeCellPropList.filter((c) => c.isRowHovered).forEach((c) => drawCellContent(ctx, c));
       }
     );
 
@@ -439,9 +481,8 @@ export const drawCells = (
       },
       (ctx: CanvasRenderingContext2D) => {
         ctx.font = `${fontSizeSM}px ${fontFamily}`;
-        otherCellPropList.forEach((cellProps) => {
-          drawCellContent(ctx, cellProps);
-        });
+        otherCellPropList.filter((c) => !c.isRowHovered).forEach((c) => drawCellContent(ctx, c));
+        otherCellPropList.filter((c) => c.isRowHovered).forEach((c) => drawCellContent(ctx, c));
       }
     );
   }
@@ -1198,13 +1239,7 @@ export const drawRowHeader = (ctx: CanvasRenderingContext2D, props: IRowHeaderDr
   drawLine(ctx, {
     x,
     y,
-    points: [0, 0, width, 0],
-    stroke: cellLineColor,
-  });
-  drawLine(ctx, {
-    x,
-    y,
-    points: [0, height, width, height],
+    points: [width, 0, width, height],
     stroke: cellLineColor,
   });
   const halfSize = iconSizeXS / 2;

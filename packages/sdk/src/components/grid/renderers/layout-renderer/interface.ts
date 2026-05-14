@@ -14,6 +14,7 @@ export interface ICellDrawerProps extends IRectangle {
   imageManager: ImageManager;
   spriteManager: SpriteManager;
   hoverCellPosition?: ICellPosition | null;
+  isRowHovered?: boolean;
 }
 
 export interface IRowHeaderDrawerProps extends IRectangle {

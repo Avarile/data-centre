@@ -1564,7 +1564,7 @@ export const GridViewBaseInner: React.FC<IGridViewBaseInnerProps> = (
   };
 
   return (
-    <div ref={containerRef} className="relative size-full">
+    <div ref={containerRef} className="relative size-full p-1">
       <Grid
         ref={gridRef}
         theme={theme}
