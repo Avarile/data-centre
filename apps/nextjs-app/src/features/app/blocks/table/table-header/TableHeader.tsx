@@ -236,7 +236,7 @@ export const TableHeader: React.FC = () => {
       <div
         className={cn(
           'flex h-12 shrink-0 flex-row items-center gap-2 pl-4 pr-2 @container/view-header',
-          tipVisible && 'border-b'
+          tipVisible && 'border-b border-r-4'
         )}
       >
         <TableInfo className="shrink-0 grow-0" isEditing={isEditing} setIsEditing={setIsEditing} />

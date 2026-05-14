@@ -31,6 +31,7 @@ import { CustomHttpException } from '../../custom.exception';
 import { PerformanceCacheService } from '../../performance-cache';
 import { SettingService } from '../setting/setting.service';
 import { getAdaptedProviderOptions, getTaskModelKey, modelProviders } from './util';
+import { runGeneralInfoAgent } from './agents/general-agents';
 
 // Fixed name for all instance (platform-provided) providers in modelKey.
 // Instance models always end with @teable (e.g. "aiGateway@model@teable", "anthropic@model@teable").
@@ -396,10 +397,12 @@ export class AiService {
     const { prompt } = aiGenerateRo;
     const modelInstance = await this.getGenerationModelInstance(baseId, aiGenerateRo);
 
-    const result = streamText({
-      model: modelInstance,
-      prompt: prompt,
-    });
+    // const result = streamText({
+    //   model: modelInstance,
+    //   prompt: prompt,
+    // });
+
+    const result = await runGeneralInfoAgent(modelInstance, prompt);
 
     result.pipeTextStreamToResponse(response);
   }
