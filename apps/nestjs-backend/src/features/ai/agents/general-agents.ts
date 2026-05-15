@@ -302,12 +302,131 @@ PostgreSQL database. Use it when you need:
 - Schema introspection (information_schema.tables / columns)
 - Queries not easily expressed through the bash scripts
 
-The database uses Teable's internal schema. Key tables include:
-  - "record"      — raw record data (JSON fields column)
-  - "table_meta"  — table metadata
-  - "space" / "base" — workspace hierarchy
 Always use parameterised queries ($1, $2, ...) and never include user-supplied
-strings directly in SQL.`,
+strings directly in SQL.
+
+## Teable Internal Schema
+
+Teable stores data in a three-level hierarchy:
+  space (workspace) → base → table_meta → record
+
+Key PostgreSQL tables:
+  - "space"       — workspaces (id, name)
+  - "base"        — databases/bases within a space (id, name, space_id)
+  - "table_meta"  — table definitions (id, name, base_id, db_table_name)
+  - "field"       — field/column definitions per table (id, name, type, table_id)
+  - "record"      — rows, one row per Teable record; field values stored in the "fields" JSONB column keyed by field ID
+
+To query record data via SQL, join through table_meta → record and use the "fields" JSONB column:
+  SELECT r.fields->>'fldXXX' AS field_value FROM record r
+  JOIN table_meta tm ON r.table_id = tm.id
+  WHERE tm.id = 'tblXXX';
+
+## Application Table Registry
+
+All business data lives in these 14 Teable tables. Each table ID is the \`table_id\` in the record table.
+
+### Lookup / Reference tables (read before creating linked records)
+| Table Name         | Table ID              | Primary field (Label fldID)              | Purpose |
+|--------------------|-----------------------|------------------------------------------|---------|
+| contact-type       | tblXWCU7zG6yVPpnH50  | fldnyYl4qoi7Rj2vuWH                      | Classifies a contact (e.g. Employee, Contractor, Vendor). REQUIRED when creating contacts. |
+| contact-profession | tblSceUZHrMe5psnhCZ  | fldSKRAlDgG0I9HuUld                      | The profession / job discipline of a contact. |
+| knowledge-type     | tbl2vKKo0l3RfSvKzM1  | fldkBfd3ambfvY33532                      | Category for knowledge articles. |
+
+### Core entity tables
+| Table Name        | Table ID              | Primary field (Label fldID)              | Purpose |
+|-------------------|-----------------------|------------------------------------------|---------|
+| contacts          | tblBVWS56TLkQqW3J4z  | fldCwghjVZqx0SBTQSH                      | People — employees, contractors, vendors etc. |
+| departments       | tblLalSqgqccQQ9eehi  | fldGv6a7UyZeoSKvsj9                      | Organisational departments. |
+| roles             | tblZJc88eoY1SPWmtdg  | fld25zMEwmPljt7ZIhp                      | Job roles / positions. |
+| tasks             | tblEtuOcO68wvO2nCoM  | fldPe1ctffKlzdVjJyp                      | Work tasks with status lifecycle. |
+| daily-task-view   | tblfVf2gSF1axjKxXAP  | fldG6PfABHNZvyZ1o7h                      | Daily grouping of tasks; rollup counts delivered vs total. |
+| projects          | tbluBET7kwcH7WDUxVf  | fldFRlJHm1dEuamLKpX                      | Projects that contain tasks and link to goals. |
+| goals             | tblJBmCNhL3D3nqgWl5  | fldm0XMjAcfl0Cqz7Zm                      | Strategic goals; type = milestone or objective. |
+| applications      | tbl46utYSpisOZ94FXE  | fldvVqLa4A5ShgedTJj                      | SaaS applications the company subscribes to. |
+| licences          | tbl9fT4iH6G4GXzdA9B  | fldx5XCSERLvj8xmE4m                      | Junction: one contact ↔ one application, with access_level. |
+| knowledges        | tblFH854k0qcvWMaXUx  | fldNAitxen8e6dr7QF5                      | Knowledge-base articles; may have attachments. |
+| it-support-ticket | tbl8Ule7YoA9LrViroC  | fldQx8eP9mcsy8II7Q4                      | IT helpdesk tickets. |
+
+## Relationship Map
+
+Read left-to-right as "table A links to table B via field":
+
+contacts (tblBVWS56TLkQqW3J4z)
+  fldvakGkDtRXYOEBNxu  internal_contact_type     → contact-type  [REQUIRED, single link]
+  fld5jvIWvcZm7waQiBr  internal_contact_profession → contact-profession
+  fldH533OMLkSWAmQiYA  tasks                      → tasks
+  fldboPhfNXcf1GJtVYN  projects                   → projects
+  fldluX15rOczzzhznKH  department                 → departments
+  fld2ilgjEnTHPah0SKX  role                       → roles
+
+tasks (tblEtuOcO68wvO2nCoM)
+  fldvUeNsKu56NoQ8lHM  assigned_to                → contacts
+  fldhS1tK8YWkT921lFQ  project_name               → projects
+  fld3gARpWaNluRUwTwZ  knowledge_involved         → knowledges
+
+daily-task-view (tblfVf2gSF1axjKxXAP)
+  fldnox69ipS2mXWUoip  daily_tasks                → tasks  [rollup: task_delivered, task_total]
+
+projects (tbluBET7kwcH7WDUxVf)
+  fldyGfTOcDPSX46pcBr  tasks                      → tasks
+  fldIaCVQ2ErzGwHEwgg  lead_by                    → contacts
+  fld7a95yKf4hgCyIV2x  goal                       → goals
+
+departments (tblLalSqgqccQQ9eehi)
+  fldXF2qhneT4SdnsZHz  contacts                   → contacts
+
+roles (tblZJc88eoY1SPWmtdg)
+  fldluJKyKVAncY86goO  contacts                   → contacts
+
+applications (tbl46utYSpisOZ94FXE)
+  fldx7LpNO4Jx65zYZFw  licences                   → licences
+
+licences (tbl9fT4iH6G4GXzdA9B)  ← junction table
+  fldiz8LvNpayZWDnRuM  user                       → contacts
+  fldA25l18psqCWCbmek  application                → applications
+  fldw6ftC6qP18mI0dJF  access_level               (options: user, power_user, admin, super_admin, disabled)
+
+knowledges (tblFH854k0qcvWMaXUx)
+  fld6AGvzdXknJXirdJy  knowledge_type             → knowledge-type
+  fldcGWoaSJk7BfHKCYR  tasks                      → tasks
+
+it-support-ticket (tbl8Ule7YoA9LrViroC)
+  flduXjEXWtCxpIlgoUW  requester_name             → contacts
+  fld17eWiUPc7HihzO8R  assigned_to                → contacts
+  fld2L563WzZ9lIbFkNl  type    (options: Hardware, Software, Network, Onboard, Offboard, Access issues, Credential updates, Other)
+  fldJRDkWVoUYCtxw9Gs  priority (options: Critical, High, Medium, Low)
+  fld4NzF52VlXTYtlA9v  status   (options: Open, In Progress, On Hold, Resolved, Closed)
+
+contact-type (tblXWCU7zG6yVPpnH50)
+  fld9dMELOhAw618pDKR  contacts-internal          → contacts  [reverse side of contacts.internal_contact_type]
+
+contact-profession (tblSceUZHrMe5psnhCZ)
+  fld3WhZxZox1r55OSp0  contacts-internal          → contacts  [reverse side of contacts.internal_contact_profession]
+
+knowledge-type (tbl2vKKo0l3RfSvKzM1)
+  fldHcnuYGYRRcS2uuhX  knowledges                 → knowledges  [reverse side of knowledges.knowledge_type]
+
+goals (tblJBmCNhL3D3nqgWl5)
+  fldEaHXR6bqsh68Y9BT  goal_type (options: milestone, objective)
+
+## Common Query Patterns
+
+To find all tasks for a contact by name (SQL):
+  SELECT r.fields->>'fldPe1ctffKlzdVjJyp' AS task_label,
+         r.fields->>'fldsf3yMmXHyvxE3L6w' AS status
+  FROM record r
+  WHERE r.table_id = 'tblEtuOcO68wvO2nCoM'
+    AND r.fields->'fldvUeNsKu56NoQ8lHM' @> $1::jsonb;
+  -- $1 = '[{"title":"<contact Label>"}]'
+
+To list all licences for an application (SQL):
+  SELECT r.fields->>'fldx5XCSERLvj8xmE4m' AS licence_label,
+         r.fields->>'fldw6ftC6qP18mI0dJF' AS access_level
+  FROM record r
+  WHERE r.table_id = 'tbl9fT4iH6G4GXzdA9B'
+    AND r.fields->'fldA25l18psqCWCbmek' @> $1::jsonb;
+  -- $1 = '[{"title":"<application Label>"}]'`,
     tools: {
       loadSkill: loadSkillTool,
       readFile: readFileTool,
@@ -315,7 +434,7 @@ strings directly in SQL.`,
       queryDatabase: queryDatabaseTool,
     },
     callOptionsSchema,
-    maxRetries: 3,
+    maxRetries: 5,
     prepareCall: ({ options, ...settings }) => ({
       ...settings,
       instructions: `${settings.instructions ?? ''}\n\n${buildSkillsPrompt(options.skills)}`,
