@@ -28,6 +28,7 @@
     ]
   },
   "scripts": {
+    "dev": "rimraf ./.next/dev/lock && next dev",
     "build": "next build",
     "build-fast": "cross-env NEXT_BUILD_ENV_SENTRY_ENABLED=0 NEXT_BUILD_ENV_SOURCEMAPS=0 NEXT_BUILD_ENV_TYPECHECK=0 next build",
     "bundle-analyze": "cross-env ANALYZE=true NEXT_BUILD_ENV_SENTRY_ENABLED=1 NEXT_BUILD_ENV_TYPECHECK=0 pnpm build",

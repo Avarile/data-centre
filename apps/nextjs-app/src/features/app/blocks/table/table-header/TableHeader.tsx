@@ -23,7 +23,6 @@ import {
 } from '@teable/ui-lib/shadcn';
 import { toast } from '@teable/ui-lib/shadcn/ui/sonner';
 
-import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useTranslation } from 'next-i18next';
 import { Fragment, useEffect, useState } from 'react';
@@ -33,6 +32,7 @@ import { useChatPanelStore } from '@/features/app/components/sidebar/useChatPane
 import type { IBaseResourceTable } from '@/features/app/hooks/useBaseResource';
 import { useBaseResource } from '@/features/app/hooks/useBaseResource';
 import { useIsInIframe } from '@/features/app/hooks/useIsInIframe';
+import { useHelpStore } from '@/features/help';
 import { tableConfig } from '@/features/i18n/table.config';
 import { BaseNodeMore } from '../../base/base-side-bar/BaseNodeMore';
 import { ExpandViewList } from '../../view/list/ExpandViewList';
@@ -48,6 +48,7 @@ const RightActions = ({ setIsEditing }: { setIsEditing?: (isEditing: boolean) =>
   const { t } = useTranslation(tableConfig.i18nNamespaces);
   const [open, setOpen] = useState(false);
   const { status: chatStatus, toggleVisible: toggleChat } = useChatPanelStore();
+  const { setOpen: openHelp } = useHelpStore();
   const { tableId } = useBaseResource() as IBaseResourceTable;
   const isTouchDevice = useIsTouchDevice();
   const isHydrated = useIsHydrated();
@@ -96,19 +97,12 @@ const RightActions = ({ setIsEditing }: { setIsEditing?: (isEditing: boolean) =>
             </Button>
           </ShareBasePopover>
           <Button
-            asChild
             variant="ghost"
             className="flex w-full items-center justify-start gap-3 border-b p-3"
+            onClick={() => openHelp(true)}
           >
-            <Link
-              href={t('help.mainLink')}
-              title={t('help.title')}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <HelpCircle className="size-4" />
-              <span>{t('help.title')}</span>
-            </Link>
+            <HelpCircle className="size-4" />
+            <span>{t('help.title')}</span>
           </Button>
 
           <BaseNodeMore
@@ -142,10 +136,13 @@ const RightActions = ({ setIsEditing }: { setIsEditing?: (isEditing: boolean) =>
               <UserPlus className="size-4" /> {t('space:action.invite')}
             </Button>
           </ShareBasePopover>
-          <Button asChild variant="ghost" size="xs" className="flex justify-start">
-            <a href={t('help.mainLink')} title={t('help.title')} target="_blank" rel="noreferrer">
-              <HelpCircle className="size-4" /> {t('help.title')}
-            </a>
+          <Button
+            variant="ghost"
+            size="xs"
+            className="flex justify-start"
+            onClick={() => openHelp(true)}
+          >
+            <HelpCircle className="size-4" /> {t('help.title')}
           </Button>
           <BaseNodeMore
             resourceType={BaseNodeResourceType.Table}
@@ -192,15 +189,13 @@ const RightActions = ({ setIsEditing }: { setIsEditing?: (isEditing: boolean) =>
           >
             <MessageSquare className="size-4" />
           </Button>
-          <Button asChild variant="ghost" size="icon-xs">
-            <Link
-              href={t('help.mainLink')}
-              title={t('help.title')}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <HelpCircle className="size-4" />
-            </Link>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            title={t('help.title')}
+            onClick={() => openHelp(true)}
+          >
+            <HelpCircle className="size-4" />
           </Button>
           <BaseNodeMore
             resourceType={BaseNodeResourceType.Table}

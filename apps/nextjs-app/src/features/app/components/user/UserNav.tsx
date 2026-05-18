@@ -14,6 +14,7 @@ import {
 import { useRouter } from 'next/router';
 import { useTranslation } from 'next-i18next';
 import React from 'react';
+import { useHelpStore } from '@/features/help';
 import { useIsCloud } from '../../hooks/useIsCloud';
 import { SettingTab, useSettingStore } from '../setting/useSettingStore';
 
@@ -23,6 +24,7 @@ export const UserNav: React.FC<React.PropsWithChildren> = (props) => {
   const { t } = useTranslation(['common', 'setting']);
   const { user } = useSession();
   const setting = useSettingStore();
+  const help = useHelpStore();
   const { mutateAsync: loginOut, isPending: isLoading } = useMutation({
     mutationFn: signout,
   });
@@ -52,11 +54,9 @@ export const UserNav: React.FC<React.PropsWithChildren> = (props) => {
           <Settings className="size-4 shrink-0" />
           {t('settings.nav.settings')}
         </DropdownMenuItem>
-        <DropdownMenuItem className="flex gap-2" asChild>
-          <a href={t('help.mainLink')} target="_blank" rel="noreferrer">
-            <HelpCircle className="size-4 shrink-0" />
-            {t('help.title')}
-          </a>
+        <DropdownMenuItem className="flex gap-2" onClick={() => help.setOpen(true)}>
+          <HelpCircle className="size-4 shrink-0" />
+          {t('help.title')}
         </DropdownMenuItem>
         <DropdownMenuItem className="flex gap-2" asChild>
           <a

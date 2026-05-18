@@ -576,105 +576,6 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
           <div className={isFullscreen ? 'flex shrink-0 justify-center p-3' : 'shrink-0 p-3'}>
             <PromptInput className={isFullscreen ? 'w-1/3' : undefined} onSubmit={handleSubmit}>
               {/* Header: file selector trigger + attachment chips */}
-              {(chatFiles.length > 0 || uploadingFiles.length > 0 || uploadError) && (
-                <PromptInputHeader>
-                  {/* File selector — always visible when files exist */}
-                  {chatFiles.length > 0 && (
-                    <ModelSelector>
-                      <ModelSelectorTrigger asChild>
-                        <button
-                          type="button"
-                          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-                        >
-                          <Files className="size-3.5 shrink-0" />
-                          <span>{t('ai.chat.files', 'Files')}</span>
-                          {selectedFileIds.size > 0 && (
-                            <span className="rounded-full bg-primary/15 px-1.5 text-primary">
-                              {selectedFileIds.size}
-                            </span>
-                          )}
-                        </button>
-                      </ModelSelectorTrigger>
-                      <ModelSelectorContent
-                        title={t('ai.chat.selectFilesTitle', 'Select files as context')}
-                      >
-                        <ModelSelectorInput
-                          placeholder={t('ai.chat.searchFiles', 'Search files…')}
-                        />
-                        <ModelSelectorList>
-                          <ModelSelectorEmpty>
-                            {t('ai.files.empty', 'No files uploaded yet.')}
-                          </ModelSelectorEmpty>
-                          <ModelSelectorGroup>
-                            {chatFiles.map((file) => (
-                              <ModelSelectorItem
-                                key={file.id}
-                                value={file.name}
-                                onSelect={() => toggleFileSelection(file.id)}
-                              >
-                                <Check
-                                  className={`mr-2 size-4 shrink-0 ${
-                                    selectedFileIds.has(file.id) ? 'opacity-100' : 'opacity-0'
-                                  }`}
-                                />
-                                <FileIcon className="mr-2 size-4 shrink-0 text-muted-foreground" />
-                                <span className="flex-1 truncate">{file.name}</span>
-                                <span className="ml-2 shrink-0 text-xs text-muted-foreground">
-                                  {formatBytes(file.size)}
-                                </span>
-                              </ModelSelectorItem>
-                            ))}
-                          </ModelSelectorGroup>
-                        </ModelSelectorList>
-                      </ModelSelectorContent>
-                    </ModelSelector>
-                  )}
-
-                  {/* Chips for selected library files */}
-                  {selectedFiles.map((f) => (
-                    <div
-                      key={`sel-${f.id}`}
-                      className="flex items-center gap-1 rounded-md border bg-muted px-2 py-1 text-xs"
-                    >
-                      <FileIcon className="size-3 shrink-0" />
-                      <span className="max-w-[100px] truncate">{f.name}</span>
-                      <button
-                        type="button"
-                        className="ml-1 text-muted-foreground hover:text-foreground"
-                        onClick={() => toggleFileSelection(f.id)}
-                      >
-                        <X className="size-3" />
-                      </button>
-                    </div>
-                  ))}
-
-                  {/* Chips for in-flight uploads */}
-                  {uploadingFiles.map((f) => (
-                    <div
-                      key={f.id}
-                      className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs ${
-                        f.error
-                          ? 'border-destructive/50 bg-destructive/10 text-destructive'
-                          : 'bg-muted'
-                      }`}
-                    >
-                      <FileIcon className="size-3 shrink-0" />
-                      <span className="max-w-[100px] truncate">{f.name}</span>
-                      {f.uploading && <span className="text-muted-foreground">…</span>}
-                      {f.error && <span>{f.error}</span>}
-                      <button
-                        type="button"
-                        className="ml-1 text-muted-foreground hover:text-foreground"
-                        onClick={() => removeUploadingFile(f.id)}
-                      >
-                        <X className="size-3" />
-                      </button>
-                    </div>
-                  ))}
-
-                  {uploadError && <p className="w-full text-xs text-destructive">{uploadError}</p>}
-                </PromptInputHeader>
-              )}
 
               <PromptInputBody>
                 <PromptInputTextarea
@@ -683,6 +584,108 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
                 />
               </PromptInputBody>
               <PromptInputFooter className="justify-end">
+                {(chatFiles.length > 0 || uploadingFiles.length > 0 || uploadError) && (
+                  <PromptInputHeader>
+                    {/* File selector — always visible when files exist */}
+                    {chatFiles.length > 0 && (
+                      <ModelSelector>
+                        <ModelSelectorTrigger asChild>
+                          <button
+                            type="button"
+                            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                          >
+                            <Files className="size-3.5 shrink-0" />
+                            <span>{t('ai.chat.files', 'Files')}</span>
+                            {selectedFileIds.size > 0 && (
+                              <span className="rounded-full bg-primary/15 px-1.5 text-primary">
+                                {selectedFileIds.size}
+                              </span>
+                            )}
+                          </button>
+                        </ModelSelectorTrigger>
+                        <ModelSelectorContent
+                          title={t('ai.chat.selectFilesTitle', 'Select files as context')}
+                        >
+                          <ModelSelectorInput
+                            placeholder={t('ai.chat.searchFiles', 'Search files…')}
+                          />
+                          <ModelSelectorList>
+                            <ModelSelectorEmpty>
+                              {t('ai.files.empty', 'No files uploaded yet.')}
+                            </ModelSelectorEmpty>
+                            <ModelSelectorGroup>
+                              {chatFiles.map((file) => (
+                                <ModelSelectorItem
+                                  key={file.id}
+                                  value={file.name}
+                                  onSelect={() => toggleFileSelection(file.id)}
+                                >
+                                  <Check
+                                    className={`mr-2 size-4 shrink-0 ${
+                                      selectedFileIds.has(file.id) ? 'opacity-100' : 'opacity-0'
+                                    }`}
+                                  />
+                                  <FileIcon className="mr-2 size-4 shrink-0 text-muted-foreground" />
+                                  <span className="flex-1 truncate">{file.name}</span>
+                                  <span className="ml-2 shrink-0 text-xs text-muted-foreground">
+                                    {formatBytes(file.size)}
+                                  </span>
+                                </ModelSelectorItem>
+                              ))}
+                            </ModelSelectorGroup>
+                          </ModelSelectorList>
+                        </ModelSelectorContent>
+                      </ModelSelector>
+                    )}
+
+                    {/* Chips for selected library files */}
+                    {selectedFiles.map((f) => (
+                      <div
+                        key={`sel-${f.id}`}
+                        className="flex items-center gap-1 rounded-md border bg-muted px-2 py-1 text-xs"
+                      >
+                        <FileIcon className="size-3 shrink-0" />
+                        <span className="max-w-[100px] truncate">{f.name}</span>
+                        <button
+                          type="button"
+                          className="ml-1 text-muted-foreground hover:text-foreground"
+                          onClick={() => toggleFileSelection(f.id)}
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </div>
+                    ))}
+
+                    {/* Chips for in-flight uploads */}
+                    {uploadingFiles.map((f) => (
+                      <div
+                        key={f.id}
+                        className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs ${
+                          f.error
+                            ? 'border-destructive/50 bg-destructive/10 text-destructive'
+                            : 'bg-muted'
+                        }`}
+                      >
+                        <FileIcon className="size-3 shrink-0" />
+                        <span className="max-w-[100px] truncate">{f.name}</span>
+                        {f.uploading && <span className="text-muted-foreground">…</span>}
+                        {f.error && <span>{f.error}</span>}
+                        <button
+                          type="button"
+                          className="ml-1 text-muted-foreground hover:text-foreground"
+                          onClick={() => removeUploadingFile(f.id)}
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </div>
+                    ))}
+
+                    {uploadError && (
+                      <p className="w-full text-xs text-destructive">{uploadError}</p>
+                    )}
+                  </PromptInputHeader>
+                )}
+
                 <PromptInputTools>
                   <PromptInputButton
                     tooltip={t('ai.chat.attachFile', 'Attach file')}
@@ -733,7 +736,7 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
                 {chatFiles.map((file) => (
                   <li
                     key={file.id}
-                    className="flex items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-accent"
+                    className="flex items-center gap-2 rounded-md p-2 text-sm hover:bg-accent"
                   >
                     <FileIcon className="size-4 shrink-0 text-muted-foreground" />
                     <div className="min-w-0 flex-1">

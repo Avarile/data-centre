@@ -22,3 +22,9 @@ PRISMA_DATABASE_URL="postgresql://appuser:wxgnA33EQ27Ms6wR97AS0PECYqynWw02@127.0
 ```bash
 cd apps/nestjs-backend && pnpm install && pnpm dev
 ```
+
+
+``` how to solve the nextjs-lock issue
+pkill -f "next dev" 2>/dev/null; pkill -f "next-server" 2>/dev/null; true
+rm -rf apps/nextjs-app/.next/dev
+```

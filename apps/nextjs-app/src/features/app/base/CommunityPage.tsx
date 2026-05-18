@@ -1,12 +1,14 @@
 import { useTheme } from '@teable/next-themes';
 import Image from 'next/image';
 import { Trans, useTranslation } from 'next-i18next';
+import { useHelpStore } from '@/features/help';
 import { tableConfig } from '@/features/i18n/table.config';
 
 export const CommunityPage = () => {
   const { t } = useTranslation(tableConfig.i18nNamespaces);
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
+  const { setOpen: openHelp } = useHelpStore();
   return (
     <div className="h-full flex-col md:flex">
       <div className="flex h-full flex-1 flex-col gap-2 lg:gap-4">
@@ -29,14 +31,13 @@ export const CommunityPage = () => {
                 i18nKey="welcome.help"
                 components={{
                   HelpCenter: (
-                    <a
-                      href={t('help.mainLink')}
-                      className="text-blue-500 hover:text-blue-700"
-                      target="_blank"
-                      rel="noreferrer"
+                    <button
+                      type="button"
+                      className="cursor-pointer text-blue-500 underline hover:text-blue-700"
+                      onClick={() => openHelp(true)}
                     >
                       {t('table:welcome.helpCenter')}
-                    </a>
+                    </button>
                   ),
                 }}
               ></Trans>

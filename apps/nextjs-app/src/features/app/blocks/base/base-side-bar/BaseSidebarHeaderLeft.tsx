@@ -36,6 +36,7 @@ import { useRef, useState } from 'react';
 import { TeableLogo } from '@/components/TeableLogo';
 import { Emoji } from '@/features/app/components/emoji/Emoji';
 import { useIsCloud } from '@/features/app/hooks/useIsCloud';
+import { useHelpStore } from '@/features/help';
 import { tableConfig } from '@/features/i18n/table.config';
 import { PublishBaseDialog } from '../../table/table-header/publish-base/PublishBaseDialog';
 import { useSharedNodeIds } from './BaseNodeShareIndicator';
@@ -73,6 +74,7 @@ const BaseDropdownMenu = ({
   const { t } = useTranslation(tableConfig.i18nNamespaces);
   const isCloud = useIsCloud();
   const [open, setOpen] = useState(false);
+  const { setOpen: openHelp } = useHelpStore();
   const [shareOpen, setShareOpen] = useState(false);
   const useV2 = v2Status?.useV2 ?? Boolean(isCanary);
   const versionLabel = useV2 ? 'v2' : 'v1';
@@ -201,17 +203,12 @@ const BaseDropdownMenu = ({
           )}
 
           <DropdownMenuSeparator />
-          <DropdownMenuItem asChild>
-            <Link
-              href={t('help.mainLink')}
-              title={t('help.title')}
-              target="_blank"
-              rel="noreferrer"
-              className="flex w-full cursor-pointer items-center gap-2"
-            >
-              <HelpCircle className="size-4" />
-              {t('help.title')}
-            </Link>
+          <DropdownMenuItem
+            className="flex cursor-pointer items-center gap-2"
+            onClick={() => openHelp(true)}
+          >
+            <HelpCircle className="size-4" />
+            {t('help.title')}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

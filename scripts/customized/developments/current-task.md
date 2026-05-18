@@ -1,6 +1,5 @@
-# Goal: update the form, according to the simplistic design of the shadcn form.
+# Goal: design a module to handle the external commmunication using the Vercel chat SDK:
 
-1. Update the form in apps/nextjs-app/src/features/app/blocks/view/form/components/FromBody.tsx.
-2. use the Simplistic design from https://ui.shadcn.com/docs/components/base/field as a references.
-3. Make the form wider.
-4. re-design it beautifully.
+1. What is possible by analysis the Vercel Chat SDK.
+2. A Comprehensive design of how to integrate, design a table schema to save the data.
+3. If questions, discuss with me.
