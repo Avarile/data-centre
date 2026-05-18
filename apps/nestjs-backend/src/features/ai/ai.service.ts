@@ -466,7 +466,7 @@ export class AiService {
       response.end();
     } catch (err) {
       if (!response.headersSent) throw err;
-      response.write(`data: [ERROR] ${(err as Error).message}\n\n`);
+      this.logger.error(`[generateStream] Error after headers sent: ${(err as Error).message}`);
       response.end();
     }
   }

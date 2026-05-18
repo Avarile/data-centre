@@ -413,19 +413,15 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
 
       const userMsg: IMessage = { role: 'user', content: text };
       const assistantPlaceholder: IMessage = { role: 'assistant', content: '' };
+      const nextHistory = [...messages, userMsg];
 
-      setMessages((prev) => {
-        const next = [...prev, userMsg, assistantPlaceholder];
-        setIsStreaming(true);
-        setIsThinking(true);
-        streamAssistantReply(text, [...prev, userMsg], fileTokens);
-        return next;
-      });
-
-      // Clear just-uploaded queue; keep library selection across messages
+      setMessages([...nextHistory, assistantPlaceholder]);
+      setIsStreaming(true);
+      setIsThinking(true);
+      streamAssistantReply(text, nextHistory, fileTokens);
       setUploadingFiles([]);
     },
-    [isStreaming, streamAssistantReply, uploadingFiles, chatFiles, selectedFileIds]
+    [isStreaming, messages, streamAssistantReply, uploadingFiles, chatFiles, selectedFileIds]
   );
 
   const handleStop = useCallback(() => {
