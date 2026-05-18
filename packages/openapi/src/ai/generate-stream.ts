@@ -9,20 +9,36 @@ export enum Task {
 
 export const AI_GENERATE_STREAM = '/api/{baseId}/ai/generate-stream';
 
-export const aiGenerateRoSchema = z.object({
-  prompt: z.string(),
-  task: z.enum(Task).optional().meta({
-    description: 'Quick model selection via predefined task type',
-    example: Task.Coding,
-  }),
-  modelKey: z.string().optional().meta({
-    description: 'Specify an exact model configuration to use',
-    example: 'openai@gpt-4o@custom-name',
-  }),
-  fileTokens: z.array(z.string()).optional().meta({
-    description: 'Tokens of uploaded chat files to include as context',
-  }),
-});
+export const aiGenerateRoSchema = z
+  .object({
+    prompt: z.string().optional(),
+    messages: z
+      .array(
+        z.object({
+          role: z.enum(['user', 'assistant']),
+          content: z.string(),
+        })
+      )
+      .optional()
+      .meta({
+        description:
+          'Conversation history for multi-turn chat. Takes precedence over prompt when provided.',
+      }),
+    task: z.enum(Task).optional().meta({
+      description: 'Quick model selection via predefined task type',
+      example: Task.Coding,
+    }),
+    modelKey: z.string().optional().meta({
+      description: 'Specify an exact model configuration to use',
+      example: 'openai@gpt-4o@custom-name',
+    }),
+    fileTokens: z.array(z.string()).optional().meta({
+      description: 'Tokens of uploaded chat files to include as context',
+    }),
+  })
+  .refine((data) => data.prompt !== undefined || (data.messages && data.messages.length > 0), {
+    message: 'Either prompt or messages must be provided',
+  });
 
 export type IAiGenerateRo = z.infer<typeof aiGenerateRoSchema>;
 

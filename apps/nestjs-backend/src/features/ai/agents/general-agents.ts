@@ -2,12 +2,22 @@ import { exec } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
-import type { LanguageModel } from 'ai';
+import type { LanguageModel, ModelMessage } from 'ai';
 import { tool, ToolLoopAgent } from 'ai';
 import { Pool } from 'pg';
 import { z } from 'zod';
 
 const execAsync = promisify(exec);
+
+// Module-level singleton — one pool shared across all sandbox instances.
+const sharedPool: Pool | null = (() => {
+  const databaseUrl =
+    process.env.PRISMA_DATA_DATABASE_URL ??
+    process.env.PRISMA_META_DATABASE_URL ??
+    process.env.PRISMA_DATABASE_URL ??
+    process.env.DATABASE_URL;
+  return databaseUrl ? new Pool({ connectionString: databaseUrl }) : null;
+})();
 
 // ─── Sandbox abstraction ──────────────────────────────────────────────────────
 // Abstracts filesystem + shell execution so the agent can run in any environment.
@@ -23,14 +33,6 @@ interface ISandbox {
 }
 
 function createNodeSandbox(workingDirectory: string): ISandbox {
-  const databaseUrl =
-    process.env.PRISMA_DATA_DATABASE_URL ??
-    process.env.PRISMA_META_DATABASE_URL ??
-    process.env.PRISMA_DATABASE_URL ??
-    process.env.DATABASE_URL;
-
-  const pool = databaseUrl ? new Pool({ connectionString: databaseUrl }) : null;
-
   return {
     async readFile(filePath) {
       const resolved = path.isAbsolute(filePath) ? filePath : path.join(workingDirectory, filePath);
@@ -47,9 +49,19 @@ function createNodeSandbox(workingDirectory: string): ISandbox {
     },
 
     async query(sql, params = []) {
-      if (!pool) throw new Error('No database connection string found in environment');
-      const result = await pool.query(sql, params as unknown[]);
-      return { rows: result.rows, rowCount: result.rowCount ?? 0 };
+      if (!sharedPool) throw new Error('No database connection string found in environment');
+      const client = await sharedPool.connect();
+      try {
+        await client.query('BEGIN TRANSACTION READ ONLY');
+        const result = await client.query(sql, params as unknown[]);
+        await client.query('COMMIT');
+        return { rows: result.rows, rowCount: result.rowCount ?? 0 };
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
     },
   };
 }
@@ -208,6 +220,15 @@ const bashTool = tool({
   }),
   execute: async ({ command }, { experimental_context: experimentalContext }) => {
     const { sandbox } = experimentalContext as { sandbox: ISandbox };
+
+    // Allowlist: only `node scripts/<name>.js [optional-arg]` — no path traversal, no other binaries.
+    if (
+      !/^node\s+scripts\/[a-zA-Z0-9_-]+\.js(?:\s+.*)?$/s.test(command) ||
+      command.includes('..')
+    ) {
+      return { error: 'Only `node scripts/<name>.js [arg]` commands are permitted' };
+    }
+
     try {
       return await sandbox.exec(command);
     } catch (err) {
@@ -452,25 +473,37 @@ To list all licences for an application (SQL):
 // In production, ensure sandbox/** assets are copied to dist alongside compiled JS.
 const skillSearchDir = path.join(__dirname, '..');
 
+// Lazy singleton — skills are discovered once on first request and reused.
+// Skills change only when SKILL.md files are added/modified, which requires a restart.
+let cachedSkillsPromise: Promise<ISkillMetadata[]> | null = null;
+
+function getOrDiscoverSkills(sandbox: ISandbox, directories: string[]): Promise<ISkillMetadata[]> {
+  if (!cachedSkillsPromise) {
+    cachedSkillsPromise = discoverSkills(sandbox, directories);
+  }
+  return cachedSkillsPromise;
+}
+
+export type AgentInput =
+  | { prompt: string; messages?: never }
+  | { messages: ModelMessage[]; prompt?: never };
+
 /**
- * Discovers available skills, creates the agent, and runs it against the given prompt.
+ * Discovers available skills (cached after first call), creates the agent, and streams
+ * a response for the given input.
  *
- * @param model  - A language model instance (from AiService.getModelInstance).
- * @param prompt - The user's natural-language request.
- * @param extraSkillDirs - Optional additional directories to scan for skills.
+ * @param model - A language model instance (from AiService.getModelInstance).
+ * @param input - Either a single-turn { prompt } or multi-turn { messages }.
  */
-export async function runGeneralInfoAgent(
-  model: LanguageModel,
-  prompt: string,
-  extraSkillDirs: string[] = []
-) {
+export async function runGeneralInfoAgent(model: LanguageModel, input: AgentInput) {
   const sandbox = createNodeSandbox(skillSearchDir);
-  const skills = await discoverSkills(sandbox, [skillSearchDir, ...extraSkillDirs]);
+  const skills = await getOrDiscoverSkills(sandbox, [skillSearchDir]);
 
   const agent = createGeneralInfoAgent(model);
 
   return agent.stream({
-    prompt,
+    ...input,
     options: { sandbox, skills },
+    abortSignal: AbortSignal.timeout(90_000),
   });
 }

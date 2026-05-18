@@ -141,7 +141,24 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
 
   // Chat state
   const [activeTab, setActiveTab] = useState<'chat' | 'files'>('chat');
-  const [messages, setMessages] = useState<IMessage[]>([]);
+  const [messages, setMessages] = useState<IMessage[]>(() => {
+    try {
+      const stored = localStorage.getItem(`chat-history:${baseId}`);
+      if (!stored) return [];
+      const parsed: unknown = JSON.parse(stored);
+      if (
+        Array.isArray(parsed) &&
+        parsed.every(
+          (m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'
+        )
+      ) {
+        return parsed as IMessage[];
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  });
   const [hasText, setHasText] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
@@ -210,6 +227,15 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
       abortRef.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    if (isStreaming) return; // avoid synchronous writes on every streamed token
+    try {
+      localStorage.setItem(`chat-history:${baseId}`, JSON.stringify(messages));
+    } catch {
+      // localStorage unavailable or quota exceeded — silently skip
+    }
+  }, [baseId, messages, isStreaming]);
 
   // ---------------------------------------------------------------------------
   // File upload logic
@@ -305,19 +331,21 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
   // ---------------------------------------------------------------------------
 
   const streamAssistantReply = useCallback(
-    async (userText: string, history: IMessage[], fileTokens: string[]) => {
-      const preamble = selectedRecordsContext
-        ? `You are a helpful data assistant. The user has selected these records from the table:\n\n${selectedRecordsContext}\n\n`
-        : 'You are a helpful data assistant.\n\n';
-
-      const historyStr = history
-        .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
-        .join('\n');
-
-      const prompt = `${preamble}${historyStr ? historyStr + '\n' : ''}User: ${userText}\nAssistant:`;
-
+    async (_userText: string, history: IMessage[], fileTokens: string[]) => {
       const controller = new AbortController();
       abortRef.current = controller;
+
+      // If records are selected, inject the context into the current (last) user message
+      // for the API only — state stores raw text for display.
+      const apiMessages = history.map((m, i) => {
+        if (i === history.length - 1 && m.role === 'user' && selectedRecordsContext) {
+          return {
+            role: m.role,
+            content: `The user has selected these records from the table:\n\n${selectedRecordsContext}\n\n${m.content}`,
+          };
+        }
+        return { role: m.role, content: m.content };
+      });
 
       let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 
@@ -336,7 +364,7 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
       try {
         const res = await aiGenerateStream(
           baseId,
-          { prompt, fileTokens: fileTokens.length ? fileTokens : undefined },
+          { messages: apiMessages, fileTokens: fileTokens.length ? fileTokens : undefined },
           controller.signal
         );
         if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);

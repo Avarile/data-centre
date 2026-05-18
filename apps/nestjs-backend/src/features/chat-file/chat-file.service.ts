@@ -1,5 +1,11 @@
 import { Readable } from 'stream';
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfParse = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string }>;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const mammoth = require('mammoth') as {
+  extractRawText: (opts: { buffer: Buffer }) => Promise<{ value: string }>;
+};
 import { HttpErrorCode } from '@teable/core';
 import { PrismaService } from '@teable/db-main-prisma';
 import { UploadType } from '@teable/openapi';
@@ -133,26 +139,26 @@ export class ChatFileService {
       where: { token: { in: tokens }, deletedTime: null },
     });
 
-    const parts: string[] = [];
     const bucket = StorageAdapter.getBucket(UploadType.ChatFile);
 
-    for (const record of records) {
-      try {
-        const text = await this.extractTextFromFile(
-          bucket,
-          record.path,
-          record.mimetype,
-          record.name
-        );
-        if (text) {
-          parts.push(`--- File: ${record.name} ---\n${text}`);
+    const parts = await Promise.all(
+      records.map(async (record) => {
+        try {
+          const text = await this.extractTextFromFile(
+            bucket,
+            record.path,
+            record.mimetype,
+            record.name
+          );
+          return text ? `--- File: ${record.name} ---\n${text}` : null;
+        } catch (err) {
+          this.logger.warn(`Failed to extract text from file ${record.name}`, err);
+          return null;
         }
-      } catch (err) {
-        this.logger.warn(`Failed to extract text from file ${record.name}`, err);
-      }
-    }
+      })
+    );
 
-    return parts.join('\n\n');
+    return parts.filter(Boolean).join('\n\n');
   }
 
   private async streamToBuffer(stream: Readable): Promise<Buffer> {
@@ -174,8 +180,6 @@ export class ChatFileService {
     const buffer = await this.streamToBuffer(stream as Readable);
 
     if (mimetype === 'application/pdf') {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pdfParse = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string }>;
       const result = await pdfParse(buffer);
       return result.text;
     }
@@ -184,10 +188,6 @@ export class ChatFileService {
       mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
       mimetype === 'application/msword'
     ) {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const mammoth = require('mammoth') as {
-        extractRawText: (opts: { buffer: Buffer }) => Promise<{ value: string }>;
-      };
       const result = await mammoth.extractRawText({ buffer });
       return result.value;
     }

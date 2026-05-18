@@ -22,17 +22,18 @@ import type {
   GatewayModelTag,
   LLMProvider,
 } from '@teable/openapi';
-import type { ImageModel, LanguageModel } from 'ai';
+import type { ImageModel, LanguageModel, ModelMessage } from 'ai';
 import { createGateway, generateText, streamText } from 'ai';
 import axios from 'axios';
 import type { Response } from 'express';
 import { BaseConfig, IBaseConfig } from '../../configs/base.config';
 import { CustomHttpException } from '../../custom.exception';
-import { PerformanceCacheService } from '../../performance-cache';
+import { PerformanceCache, PerformanceCacheService } from '../../performance-cache';
 import { ChatFileService } from '../chat-file/chat-file.service';
 import { SettingService } from '../setting/setting.service';
 import { getAdaptedProviderOptions, getTaskModelKey, modelProviders } from './util';
 import { runGeneralInfoAgent } from './agents/general-agents';
+import type { AgentInput } from './agents/general-agents';
 
 // Fixed name for all instance (platform-provided) providers in modelKey.
 // Instance models always end with @teable (e.g. "aiGateway@model@teable", "anthropic@model@teable").
@@ -237,6 +238,7 @@ export class AiService {
   }
 
   // eslint-disable-next-line sonarjs/cognitive-complexity
+  @PerformanceCache({ ttl: 30 })
   async getAIConfig(baseId: string) {
     const { spaceId } = await this.prismaService.base.findUniqueOrThrow({
       where: { id: baseId },
@@ -290,16 +292,20 @@ export class AiService {
       const sm = aiConfig.chatModel.sm;
       const md = aiConfig.chatModel.md;
       const ability = aiConfig.chatModel.ability;
+      const spaceProviders = aiIntegrationConfig.llmProviders as LLMProvider[];
+      const instanceProviders = aiConfig.llmProviders.map((provider) => ({
+        ...provider,
+        isInstance: true,
+      }));
+      const spaceKeys = new Set(spaceProviders.map((p) => `${p.type}:${p.name}`));
       config = {
         ...aiIntegrationConfig,
         // Include gateway models from admin config (space config doesn't have gateway models)
         gatewayModels: aiConfig.gatewayModels,
+        // Space config wins on name collision; instance providers fill gaps only.
         llmProviders: [
-          ...aiIntegrationConfig.llmProviders,
-          ...aiConfig.llmProviders.map((provider) => ({
-            ...provider,
-            isInstance: true,
-          })),
+          ...spaceProviders,
+          ...instanceProviders.filter((p) => !spaceKeys.has(`${p.type}:${p.name}`)),
         ],
         chatModel: {
           sm: sm || lg,
@@ -391,10 +397,6 @@ export class AiService {
     return await this.getModelInstance(modelKey, config.llmProviders);
   }
 
-  /**
-   * Pre-agent step: parses uploaded files and wraps their extracted text in
-   * XML delimiters so the LLM can clearly separate context from the user prompt.
-   */
   private async injectFileContext(
     prompt: string,
     fileTokens: string[] | undefined
@@ -405,16 +407,50 @@ export class AiService {
     return `<file_context>\n${context}\n</file_context>\n\n${prompt}`;
   }
 
+  private async injectFileContextToMessages(
+    messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+    fileTokens: string[] | undefined
+  ): Promise<ModelMessage[]> {
+    if (!fileTokens?.length) return messages as ModelMessage[];
+    const context = await this.chatFileService.buildFileContext(fileTokens);
+    if (!context) return messages as ModelMessage[];
+
+    const result: Array<{ role: 'user' | 'assistant'; content: string }> = [...messages];
+    for (let i = result.length - 1; i >= 0; i--) {
+      if (result[i].role === 'user') {
+        result[i] = {
+          role: 'user',
+          content: `${result[i].content}\n\n<file_context>\n${context}\n</file_context>`,
+        };
+        break;
+      }
+    }
+    return result as ModelMessage[];
+  }
+
   async generateStream(
     baseId: string,
     aiGenerateRo: IAiGenerateRo,
     response: Response
   ): Promise<void> {
-    const { prompt, fileTokens } = aiGenerateRo;
-    const modelInstance = await this.getGenerationModelInstance(baseId, aiGenerateRo);
-    const enrichedPrompt = await this.injectFileContext(prompt, fileTokens);
-    const result = await runGeneralInfoAgent(modelInstance, enrichedPrompt);
-    result.pipeTextStreamToResponse(response);
+    try {
+      const { prompt, messages, fileTokens } = aiGenerateRo;
+      const modelInstance = await this.getGenerationModelInstance(baseId, aiGenerateRo);
+
+      let input: AgentInput;
+      if (messages?.length) {
+        input = { messages: await this.injectFileContextToMessages(messages, fileTokens) };
+      } else {
+        input = { prompt: await this.injectFileContext(prompt ?? '', fileTokens) };
+      }
+
+      const result = await runGeneralInfoAgent(modelInstance, input);
+      result.pipeTextStreamToResponse(response);
+    } catch (err) {
+      if (!response.headersSent) throw err;
+      response.write(`data: [ERROR] ${(err as Error).message}\n\n`);
+      response.end();
+    }
   }
 
   async generateText(baseId: string, aiGenerateRo: IAiGenerateRo) {
