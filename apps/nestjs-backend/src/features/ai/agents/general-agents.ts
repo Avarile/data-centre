@@ -308,7 +308,12 @@ When the user asks for information or an action that involves the database:
 3. Use \`readFile\` to read any reference or asset files listed in the skill.
 4. Use \`bash\` to execute the appropriate script (get-records, create-records,
    update-record, delete-record, or lookup-link-id) with a JSON argument.
-5. Interpret the script output and provide a clear, concise answer.
+5. After ALL tool calls are complete, you MUST write a final response to the user.
+   - If records were found: summarise the key details in a readable format.
+   - If nothing was found: explicitly state what you searched for and that no matching
+     records exist. Suggest alternative search terms or related tables to check.
+   - Never end your turn after a tool call without producing a text response.
+   - Never produce only pre-tool narration (e.g. "Let me search...") as your final output.
 
 When executing database scripts always:
 - Use field IDs (fldXXX) for filter and orderBy parameters.

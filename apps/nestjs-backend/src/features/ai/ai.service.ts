@@ -445,7 +445,25 @@ export class AiService {
       }
 
       const result = await runGeneralInfoAgent(modelInstance, input);
-      result.pipeTextStreamToResponse(response);
+
+      // Use a custom stream consumer so we can detect when the agent produces no final text.
+      // pipeTextStreamToResponse would close the response silently in that case, leaving the
+      // frontend with only pre-tool narration fragments and no actual answer.
+      let totalText = 0;
+      response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      for await (const chunk of result.textStream) {
+        if (chunk) {
+          totalText += chunk.length;
+          response.write(chunk);
+        }
+      }
+      if (totalText === 0) {
+        response.write(
+          'I searched the database but could not find any records matching your query. ' +
+            'Please try rephrasing your question or provide more specific terms.'
+        );
+      }
+      response.end();
     } catch (err) {
       if (!response.headersSent) throw err;
       response.write(`data: [ERROR] ${(err as Error).message}\n\n`);
