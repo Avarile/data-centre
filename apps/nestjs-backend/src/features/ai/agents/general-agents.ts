@@ -9,18 +9,21 @@ import { z } from 'zod';
 
 const execAsync = promisify(exec);
 
-// Module-level singleton — one pool shared across all sandbox instances.
-const sharedPool: Pool | null = (() => {
-  const databaseUrl =
+// Lazy singleton — initialised on first query so NestJS config / dotenv has time to load.
+let _pool: Pool | null | undefined = undefined;
+
+function getPool(): Pool | null {
+  if (_pool !== undefined) return _pool;
+  const url =
     process.env.PRISMA_DATA_DATABASE_URL ??
     process.env.PRISMA_META_DATABASE_URL ??
     process.env.PRISMA_DATABASE_URL ??
     process.env.DATABASE_URL;
-  return databaseUrl ? new Pool({ connectionString: databaseUrl }) : null;
-})();
+  _pool = url ? new Pool({ connectionString: url }) : null;
+  return _pool;
+}
 
 // ─── Sandbox abstraction ──────────────────────────────────────────────────────
-// Abstracts filesystem + shell execution so the agent can run in any environment.
 
 interface ISandbox {
   readFile(filePath: string, encoding: 'utf-8'): Promise<string>;
@@ -28,7 +31,7 @@ interface ISandbox {
     dirPath: string,
     opts: { withFileTypes: true }
   ): Promise<{ name: string; isDirectory(): boolean }[]>;
-  exec(command: string): Promise<{ stdout: string; stderr: string }>;
+  exec(command: string, opts?: { cwd?: string }): Promise<{ stdout: string; stderr: string }>;
   query(sql: string, params?: unknown[]): Promise<{ rows: unknown[]; rowCount: number }>;
 }
 
@@ -44,13 +47,14 @@ function createNodeSandbox(workingDirectory: string): ISandbox {
       return fs.promises.readdir(resolved, { withFileTypes: true });
     },
 
-    async exec(command) {
-      return execAsync(command, { cwd: workingDirectory });
+    async exec(command, opts) {
+      return execAsync(command, { cwd: opts?.cwd ?? workingDirectory });
     },
 
     async query(sql, params = []) {
-      if (!sharedPool) throw new Error('No database connection string found in environment');
-      const client = await sharedPool.connect();
+      const pool = getPool();
+      if (!pool) throw new Error('No database connection string found in environment');
+      const client = await pool.connect();
       try {
         await client.query('BEGIN TRANSACTION READ ONLY');
         const result = await client.query(sql, params as unknown[]);
@@ -78,7 +82,6 @@ function parseFrontmatter(content: string): { name: string; description: string 
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!match?.[1]) throw new Error('No frontmatter found');
 
-  // Minimal YAML key: value parser sufficient for name/description scalar strings.
   const result: Record<string, string> = {};
   for (const line of match[1].split('\n')) {
     const colon = line.indexOf(':');
@@ -101,9 +104,6 @@ function stripFrontmatter(content: string): string {
 
 /**
  * Scans each given directory for sub-folders that contain a SKILL.md file.
- * Follows the progressive-disclosure pattern from ai-sdk.dev/cookbook/guides/agent-skills:
- * only names + descriptions are loaded at discovery time; full instructions are
- * deferred until the agent calls `loadSkill`.
  */
 async function discoverSkills(sandbox: ISandbox, directories: string[]): Promise<ISkillMetadata[]> {
   const skills: ISkillMetadata[] = [];
@@ -161,6 +161,11 @@ ${skillsList}`;
 
 // ─── Tools ────────────────────────────────────────────────────────────────────
 
+// Mutable per-request state shared across tool calls within the same agent invocation.
+interface IContextState {
+  skillDir?: string;
+}
+
 const loadSkillTool = tool({
   description:
     'Load a skill to get its full instructions and discover the path to its bundled ' +
@@ -169,9 +174,10 @@ const loadSkillTool = tool({
     name: z.string().describe('The skill name to load'),
   }),
   execute: async ({ name }, { experimental_context: experimentalContext }) => {
-    const { sandbox, skills } = experimentalContext as {
+    const { sandbox, skills, state } = experimentalContext as {
       sandbox: ISandbox;
       skills: ISkillMetadata[];
+      state: IContextState;
     };
 
     const skill = skills.find((s) => s.name.toLowerCase() === name.toLowerCase());
@@ -183,6 +189,9 @@ const loadSkillTool = tool({
 
     const skillFile = `${skill.path}/SKILL.md`;
     const content = await sandbox.readFile(skillFile, 'utf-8');
+
+    // Track the loaded skill directory so the bash tool uses the right CWD.
+    state.skillDir = skill.path;
 
     return {
       skillDirectory: skill.path,
@@ -211,15 +220,19 @@ const readFileTool = tool({
 
 const bashTool = tool({
   description:
-    'Execute a shell command in the sandbox working directory. ' +
+    'Execute a shell command in the skill working directory. ' +
     'Use this to run skill scripts, e.g.: ' +
     '`node scripts/get-records.js \'{"tableId":"tblXXX","take":20}\'`. ' +
-    'The TEABLE_API_TOKEN environment variable must be set in the process environment.',
+    'The TEABLE_API_TOKEN environment variable must be set in the process environment. ' +
+    'Always call loadSkill first so the correct working directory is set.',
   inputSchema: z.object({
     command: z.string().describe('The bash command to execute'),
   }),
   execute: async ({ command }, { experimental_context: experimentalContext }) => {
-    const { sandbox } = experimentalContext as { sandbox: ISandbox };
+    const { sandbox, state } = experimentalContext as {
+      sandbox: ISandbox;
+      state: IContextState;
+    };
 
     // Allowlist: only `node scripts/<name>.js [optional-arg]` — no path traversal, no other binaries.
     if (
@@ -229,8 +242,12 @@ const bashTool = tool({
       return { error: 'Only `node scripts/<name>.js [arg]` commands are permitted' };
     }
 
+    if (!state.skillDir) {
+      return { error: 'No skill loaded. Call loadSkill first to set the working directory.' };
+    }
+
     try {
-      return await sandbox.exec(command);
+      return await sandbox.exec(command, { cwd: state.skillDir });
     } catch (err) {
       return { error: `Command failed: ${(err as Error).message}` };
     }
@@ -275,24 +292,13 @@ const callOptionsSchema = z.object({
       path: z.string(),
     })
   ),
+  state: z.custom<IContextState>(),
 });
 
 type ICallOptions = z.infer<typeof callOptionsSchema>;
 
 // ─── Agent factory ────────────────────────────────────────────────────────────
 
-/**
- * Creates a general information analysis agent backed by the Teable database skill.
- *
- * The agent follows the progressive-disclosure skills pattern:
- *   1. Skill names + descriptions are listed in the system prompt at startup.
- *   2. When the user's request matches a skill, the agent calls `loadSkill` to
- *      read the full SKILL.md instructions on demand.
- *   3. The agent then uses `readFile` and `bash` to access reference docs and
- *      execute CRUD scripts against the Teable database.
- *
- * @see https://ai-sdk.dev/cookbook/guides/agent-skills
- */
 export function createGeneralInfoAgent(model: LanguageModel): ToolLoopAgent<ICallOptions> {
   return new ToolLoopAgent<ICallOptions>({
     model,
@@ -467,6 +473,7 @@ To list all licences for an application (SQL):
       experimental_context: {
         sandbox: options.sandbox,
         skills: options.skills,
+        state: options.state,
       },
     }),
   });
@@ -474,12 +481,17 @@ To list all licences for an application (SQL):
 
 // ─── Runner ───────────────────────────────────────────────────────────────────
 
-// The `ai/` feature directory — discoverSkills scans its sub-folders for SKILL.md files.
-// In production, ensure sandbox/** assets are copied to dist alongside compiled JS.
-const skillSearchDir = path.join(__dirname, '..');
+// In the webpack bundle __dirname resolves to the dist/ output directory.
+// The CopyPlugin copies src/features/ai/sandbox → dist/features/ai/sandbox (full builds).
+// During development (before a full build), fall back to the TypeScript source tree so
+// skills are available immediately without requiring a rebuild first.
+const distSandboxDir = path.join(__dirname, 'features', 'ai');
+const srcSandboxDir = path.resolve(__dirname, '..', 'src', 'features', 'ai');
+const skillSearchDir = fs.existsSync(path.join(distSandboxDir, 'sandbox', 'SKILL.md'))
+  ? distSandboxDir
+  : srcSandboxDir;
 
 // Lazy singleton — skills are discovered once on first request and reused.
-// Skills change only when SKILL.md files are added/modified, which requires a restart.
 let cachedSkillsPromise: Promise<ISkillMetadata[]> | null = null;
 
 function getOrDiscoverSkills(sandbox: ISandbox, directories: string[]): Promise<ISkillMetadata[]> {
@@ -493,13 +505,6 @@ export type AgentInput =
   | { prompt: string; messages?: never }
   | { messages: ModelMessage[]; prompt?: never };
 
-/**
- * Discovers available skills (cached after first call), creates the agent, and streams
- * a response for the given input.
- *
- * @param model - A language model instance (from AiService.getModelInstance).
- * @param input - Either a single-turn { prompt } or multi-turn { messages }.
- */
 export async function runGeneralInfoAgent(model: LanguageModel, input: AgentInput) {
   const sandbox = createNodeSandbox(skillSearchDir);
   const skills = await getOrDiscoverSkills(sandbox, [skillSearchDir]);
@@ -508,7 +513,7 @@ export async function runGeneralInfoAgent(model: LanguageModel, input: AgentInpu
 
   return agent.stream({
     ...input,
-    options: { sandbox, skills },
+    options: { sandbox, skills, state: {} },
     abortSignal: AbortSignal.timeout(90_000),
   });
 }

@@ -23,7 +23,10 @@ module.exports = function (options) {
     },
     plugins: [
       new CopyPlugin({
-        patterns: [{ from: 'src/features/mail-sender/templates', to: 'templates' }],
+        patterns: [
+          { from: 'src/features/mail-sender/templates', to: 'templates' },
+          { from: 'src/features/ai/sandbox', to: 'features/ai/sandbox' },
+        ],
       }),
     ],
   };

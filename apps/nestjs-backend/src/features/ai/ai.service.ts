@@ -434,35 +434,70 @@ export class AiService {
     response: Response
   ): Promise<void> {
     try {
-      const { prompt, messages, fileTokens } = aiGenerateRo;
-      const modelInstance = await this.getGenerationModelInstance(baseId, aiGenerateRo);
+      const {
+        prompt,
+        messages,
+        fileTokens,
+        modelKey: _modelKey,
+        task = Task.Coding,
+      } = aiGenerateRo;
+      const config = await this.getAIConfig(baseId);
+      const modelKey = _modelKey ?? getTaskModelKey(config, task);
+      if (!modelKey) throw new Error('Model key is not set');
 
-      let input: AgentInput;
-      if (messages?.length) {
-        input = { messages: await this.injectFileContextToMessages(messages, fileTokens) };
-      } else {
-        input = { prompt: await this.injectFileContext(prompt ?? '', fileTokens) };
-      }
+      const modelInstance = await this.getModelInstance(modelKey, config.llmProviders);
 
-      const result = await runGeneralInfoAgent(modelInstance, input);
+      // Only use the tool-calling agent when the model explicitly supports tool use.
+      // Sending tools to a model that doesn't support them causes a 500 from the gateway.
+      const tags = await this.getModelTags(modelKey, config.llmProviders);
+      const supportsTools = tags.includes('tool-use');
 
-      // Use a custom stream consumer so we can detect when the agent produces no final text.
-      // pipeTextStreamToResponse would close the response silently in that case, leaving the
-      // frontend with only pre-tool narration fragments and no actual answer.
-      let totalText = 0;
       response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-      for await (const chunk of result.textStream) {
-        if (chunk) {
-          totalText += chunk.length;
-          response.write(chunk);
+
+      if (supportsTools) {
+        let input: AgentInput;
+        if (messages?.length) {
+          input = { messages: await this.injectFileContextToMessages(messages, fileTokens) };
+        } else {
+          input = { prompt: await this.injectFileContext(prompt ?? '', fileTokens) };
+        }
+
+        const result = await runGeneralInfoAgent(modelInstance, input);
+
+        // Custom stream consumer: detect when the agent produces no final text so we can
+        // send a fallback rather than silently closing the connection.
+        let totalText = 0;
+        for await (const chunk of result.textStream) {
+          if (chunk) {
+            totalText += chunk.length;
+            response.write(chunk);
+          }
+        }
+        if (totalText === 0) {
+          response.write(
+            'I searched the database but could not find any records matching your query. ' +
+              'Please try rephrasing your question or provide more specific terms.'
+          );
+        }
+      } else {
+        // Model doesn't support tool calling — use plain streamText.
+        let streamInput: Parameters<typeof streamText>[0];
+        if (messages?.length) {
+          const hydratedMessages = await this.injectFileContextToMessages(messages, fileTokens);
+          streamInput = { model: modelInstance, messages: hydratedMessages };
+        } else {
+          streamInput = {
+            model: modelInstance,
+            prompt: await this.injectFileContext(prompt ?? '', fileTokens),
+          };
+        }
+
+        const result = streamText(streamInput);
+        for await (const chunk of result.textStream) {
+          if (chunk) response.write(chunk);
         }
       }
-      if (totalText === 0) {
-        response.write(
-          'I searched the database but could not find any records matching your query. ' +
-            'Please try rephrasing your question or provide more specific terms.'
-        );
-      }
+
       response.end();
     } catch (err) {
       if (!response.headersSent) throw err;
