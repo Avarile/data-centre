@@ -7,12 +7,16 @@ import { useRouter } from 'next/router';
 import { useTranslation } from 'next-i18next';
 import React, { Fragment, useCallback, useMemo } from 'react';
 import { AppLayout } from '@/features/app/layouts';
+import { HelpModal } from '@/features/help';
 import { WorkFlowPanelModal } from '../automation/workflow-panel/WorkFlowPanelModal';
 import { BaseNodeProvider } from '../blocks/base/base-node/BaseNodeProvider';
 import { BaseSideBar } from '../blocks/base/base-side-bar/BaseSideBar';
 import { BaseSidebarHeaderLeft } from '../blocks/base/base-side-bar/BaseSidebarHeaderLeft';
 import { QuickAction } from '../blocks/base/base-side-bar/QuickAction';
 import { BasePermissionListener } from '../blocks/base/BasePermissionListener';
+import { DuplicateBaseModal } from '../blocks/base/duplicate/DuplicateBaseModal';
+import { TemplateCreateBaseModal } from '../blocks/base/duplicate/TemplateCreateBaseModal';
+import { SpaceSubscriptionModal } from '../blocks/billing/SpaceSubscriptionModal';
 import { useTableHref } from '../blocks/table-list/useTableHref';
 import { useGridSearchStore } from '../blocks/view/grid/useGridSearchStore';
 import { UsageLimitModal } from '../components/billing/UsageLimitModal';
@@ -71,6 +75,10 @@ const BaseLayoutInner: React.FC<{ children: React.ReactNode }> = ({ children }) 
       <LinkConnectorLine />
       <UsageLimitModal />
       <WorkFlowPanelModal />
+      <HelpModal />
+      <DuplicateBaseModal />
+      <TemplateCreateBaseModal />
+      <SpaceSubscriptionModal />
     </ExpandRecordNavigationContext.Provider>
   );
 };

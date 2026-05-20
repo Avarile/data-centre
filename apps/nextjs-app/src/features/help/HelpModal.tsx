@@ -1,5 +1,16 @@
 import { Search } from '@teable/icons';
-import { Badge, Dialog, DialogContent, Input, ScrollArea, Separator } from '@teable/ui-lib/shadcn';
+import { useIsTouchDevice } from '@teable/sdk/hooks';
+import {
+  Badge,
+  Button,
+  cn,
+  Dialog,
+  DialogContent,
+  Input,
+  ScrollArea,
+  Separator,
+} from '@teable/ui-lib/shadcn';
+import { ChevronLeft } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { helpPages, type HelpPage } from './helpPages';
 import { useHelpStore } from './useHelpStore';
@@ -99,16 +110,24 @@ function getCategory(page: HelpPage): string {
   return navGroups.find((g) => g.paths.includes(page.path))?.title ?? 'Docs';
 }
 
+function getAdjacentPages(path: string) {
+  const idx = helpPages.findIndex((p) => p.path === path);
+  return {
+    previousPage: idx > 0 ? helpPages[idx - 1] : undefined,
+    nextPage: idx < helpPages.length - 1 ? helpPages[idx + 1] : undefined,
+  };
+}
+
 export const HelpModal: React.FC = () => {
   const { open, setOpen } = useHelpStore();
   const [currentPath, setCurrentPath] = useState(helpPages[0].path);
   const [query, setQuery] = useState('');
+  const [showMobileContent, setShowMobileContent] = useState(false);
+  const isTouchDevice = useIsTouchDevice();
 
   const currentPage = pageByPath.get(currentPath) ?? helpPages[0];
 
-  const pageIndex = helpPages.findIndex((p) => p.path === currentPath);
-  const previousPage = pageIndex > 0 ? helpPages[pageIndex - 1] : undefined;
-  const nextPage = pageIndex < helpPages.length - 1 ? helpPages[pageIndex + 1] : undefined;
+  const { previousPage, nextPage } = getAdjacentPages(currentPath);
 
   const groupedPages = useMemo(
     () =>
@@ -133,6 +152,7 @@ export const HelpModal: React.FC = () => {
   const navigateTo = (path: string) => {
     setCurrentPath(path);
     setQuery('');
+    if (isTouchDevice) setShowMobileContent(true);
   };
 
   const handleOpenChange = (value: boolean) => {
@@ -140,6 +160,7 @@ export const HelpModal: React.FC = () => {
     if (!value) {
       setCurrentPath(helpPages[0].path);
       setQuery('');
+      setShowMobileContent(false);
     }
   };
 
@@ -183,7 +204,7 @@ export const HelpModal: React.FC = () => {
                           <span className="text-sm font-medium">{page.title}</span>
                         </div>
                         {page.description && (
-                          <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">
+                          <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
                             {page.description}
                           </p>
                         )}
@@ -195,100 +216,119 @@ export const HelpModal: React.FC = () => {
             </div>
           </ScrollArea>
         ) : (
-          /* Two-column layout */
+          /* Two-column layout (desktop) / single-column (mobile) */
           <div className="flex min-h-0 flex-1">
             {/* Sidebar nav */}
-            <ScrollArea className="w-56 shrink-0 border-r">
-              <nav className="space-y-5 p-3">
-                {groupedPages.map((group) => (
-                  <div key={group.title}>
-                    <div className="mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      {group.title}
+            {(!isTouchDevice || !showMobileContent) && (
+              <ScrollArea className={cn('shrink-0', isTouchDevice ? 'w-full' : 'w-56 border-r')}>
+                <nav className="space-y-5 p-3">
+                  {groupedPages.map((group) => (
+                    <div key={group.title}>
+                      <div className="mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        {group.title}
+                      </div>
+                      <div className="space-y-0.5">
+                        {group.pages.map((page) => (
+                          <button
+                            key={page.path}
+                            type="button"
+                            onClick={() => navigateTo(page.path)}
+                            className={`w-full rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted ${
+                              page.path === currentPath
+                                ? 'bg-muted font-medium text-foreground'
+                                : 'text-muted-foreground'
+                            }`}
+                          >
+                            {page.title}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <div className="space-y-0.5">
-                      {group.pages.map((page) => (
-                        <button
-                          key={page.path}
-                          type="button"
-                          onClick={() => setCurrentPath(page.path)}
-                          className={`w-full rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted ${
-                            page.path === currentPath
-                              ? 'bg-muted font-medium text-foreground'
-                              : 'text-muted-foreground'
-                          }`}
-                        >
-                          {page.title}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </nav>
-            </ScrollArea>
+                  ))}
+                </nav>
+              </ScrollArea>
+            )}
 
             {/* Content area */}
-            <ScrollArea className="flex-1">
-              <article className="px-8 py-6">
-                <div className="mb-1 flex items-center gap-2">
-                  <Badge variant="secondary" className="text-xs">
-                    {getCategory(currentPage)}
-                  </Badge>
-                </div>
-                <h1 className="mb-6 text-2xl font-semibold tracking-tight">{currentPage.title}</h1>
-
-                <div
-                  className="
-                    text-sm leading-relaxed text-foreground
-                    [&_h1]:mb-4 [&_h1]:mt-6 [&_h1]:text-xl [&_h1]:font-semibold
-                    [&_h2]:mb-3 [&_h2]:mt-5 [&_h2]:text-lg [&_h2]:font-semibold
-                    [&_h3]:mb-2 [&_h3]:mt-4 [&_h3]:text-base [&_h3]:font-semibold
-                    [&_h4]:mb-2 [&_h4]:mt-3 [&_h4]:text-sm [&_h4]:font-semibold
-                    [&_p]:mb-3 [&_p]:text-sm [&_p]:leading-relaxed
-                    [&_ul]:mb-3 [&_ul]:list-disc [&_ul]:pl-5
-                    [&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:pl-5
-                    [&_li]:mb-1 [&_li]:text-sm
-                    [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2 hover:[&_a]:opacity-80
-                    [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono
-                    [&_pre]:mb-3 [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:text-xs [&_pre]:font-mono [&_pre]:overflow-x-auto
-                    [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground
-                    [&_table]:w-full [&_table]:text-sm [&_table]:border-collapse
-                    [&_th]:border [&_th]:border-border [&_th]:bg-muted [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-medium
-                    [&_td]:border [&_td]:border-border [&_td]:px-3 [&_td]:py-2
-                    [&_strong]:font-semibold
-                    [&_img]:hidden
-                  "
-                  dangerouslySetInnerHTML={{ __html: currentPage.contentHtml }}
-                />
-
-                <Separator className="my-6" />
-
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>
-                    {currentPage.lastModified ? `Last modified ${currentPage.lastModified}` : ''}
-                  </span>
-                  <div className="flex gap-2">
-                    {previousPage && (
-                      <button
-                        type="button"
-                        onClick={() => setCurrentPath(previousPage.path)}
-                        className="rounded-md border px-3 py-1 transition-colors hover:bg-muted"
-                      >
-                        ← Previous
-                      </button>
-                    )}
-                    {nextPage && (
-                      <button
-                        type="button"
-                        onClick={() => setCurrentPath(nextPage.path)}
-                        className="rounded-md border px-3 py-1 transition-colors hover:bg-muted"
-                      >
-                        Next →
-                      </button>
-                    )}
+            {(!isTouchDevice || showMobileContent) && (
+              <ScrollArea className="flex-1">
+                {isTouchDevice && (
+                  <div className="flex items-center border-b px-3 py-2">
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => setShowMobileContent(false)}
+                      className="flex items-center gap-1"
+                    >
+                      <ChevronLeft className="size-4" />
+                      Back
+                    </Button>
                   </div>
-                </div>
-              </article>
-            </ScrollArea>
+                )}
+                <article className={cn('py-6', isTouchDevice ? 'px-4' : 'px-8')}>
+                  <div className="mb-1 flex items-center gap-2">
+                    <Badge variant="secondary" className="text-xs">
+                      {getCategory(currentPage)}
+                    </Badge>
+                  </div>
+                  <h1 className="mb-6 text-2xl font-semibold tracking-tight">
+                    {currentPage.title}
+                  </h1>
+
+                  <div
+                    className="
+                    text-sm leading-relaxed text-foreground
+                    [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2 hover:[&_a]:opacity-80
+                    [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground
+                    [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5
+                    [&_code]:font-mono [&_code]:text-xs [&_h1]:mb-4 [&_h1]:mt-6
+                    [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:mb-3
+                    [&_h2]:mt-5 [&_h2]:text-lg [&_h2]:font-semibold
+                    [&_h3]:mb-2 [&_h3]:mt-4 [&_h3]:text-base
+                    [&_h3]:font-semibold [&_h4]:mb-2
+                    [&_h4]:mt-3 [&_h4]:text-sm [&_h4]:font-semibold [&_img]:hidden
+                    [&_li]:mb-1 [&_li]:text-sm [&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-3
+                    [&_p]:text-sm [&_p]:leading-relaxed [&_pre]:mb-3 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-3
+                    [&_pre]:font-mono [&_pre]:text-xs [&_strong]:font-semibold [&_table]:w-full
+                    [&_table]:border-collapse [&_table]:text-sm [&_td]:border
+                    [&_td]:border-border [&_td]:px-3 [&_td]:py-2 [&_th]:border [&_th]:border-border [&_th]:bg-muted [&_th]:px-3
+                    [&_th]:py-2 [&_th]:text-left [&_th]:font-medium [&_ul]:mb-3
+                    [&_ul]:list-disc
+                    [&_ul]:pl-5
+                  "
+                    dangerouslySetInnerHTML={{ __html: currentPage.contentHtml }}
+                  />
+
+                  <Separator className="my-6" />
+
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      {currentPage.lastModified ? `Last modified ${currentPage.lastModified}` : ''}
+                    </span>
+                    <div className="flex gap-2">
+                      {previousPage && (
+                        <button
+                          type="button"
+                          onClick={() => setCurrentPath(previousPage.path)}
+                          className="rounded-md border px-3 py-1 transition-colors hover:bg-muted"
+                        >
+                          ← Previous
+                        </button>
+                      )}
+                      {nextPage && (
+                        <button
+                          type="button"
+                          onClick={() => setCurrentPath(nextPage.path)}
+                          className="rounded-md border px-3 py-1 transition-colors hover:bg-muted"
+                        >
+                          Next →
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              </ScrollArea>
+            )}
           </div>
         )}
       </DialogContent>

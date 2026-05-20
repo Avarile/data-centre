@@ -210,7 +210,20 @@ const RightActions = ({ setIsEditing }: { setIsEditing?: (isEditing: boolean) =>
       </div>
 
       {/* Collapsed menu for small screens (only on touch devices) */}
-      {isTouchDevice && collapsedContent}
+      {isTouchDevice && (
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            title={t('common:ai.chat.title', 'AI Chat')}
+            className={cn(chatStatus !== 'close' && 'bg-accent text-accent-foreground')}
+            onClick={toggleChat}
+          >
+            <MessageSquare className="size-4" />
+          </Button>
+          {collapsedContent}
+        </div>
+      )}
     </>
   );
 };

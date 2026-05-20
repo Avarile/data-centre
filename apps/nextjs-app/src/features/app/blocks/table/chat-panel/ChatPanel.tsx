@@ -11,7 +11,8 @@ import {
 } from '@teable/openapi';
 import type { IChatFileVo } from '@teable/openapi';
 import { ReactQueryKeys } from '@teable/sdk';
-import { Button } from '@teable/ui-lib/shadcn';
+import { useIsTouchDevice } from '@teable/sdk/hooks';
+import { Button, cn } from '@teable/ui-lib/shadcn';
 import axios from 'axios';
 import { FileIcon, Files, Sparkles } from 'lucide-react';
 import { useTranslation } from 'next-i18next';
@@ -126,6 +127,30 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function countSelectedRows(selection: IGridSelection | null, contextDismissed: boolean): number {
+  if (!selection?.addToChat || contextDismissed || !selection.rows) return 0;
+  return selection.rows.reduce((sum, [start, end]) => sum + (end - start + 1), 0);
+}
+
+function loadStoredMessages(baseId: string): IMessage[] {
+  try {
+    const stored = localStorage.getItem(`chat-history:${baseId}`);
+    if (!stored) return [];
+    const parsed: unknown = JSON.parse(stored);
+    if (
+      Array.isArray(parsed) &&
+      parsed.every(
+        (m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'
+      )
+    ) {
+      return parsed as IMessage[];
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -137,28 +162,12 @@ interface IChatPanelProps {
 export const ChatPanel = ({ baseId }: IChatPanelProps) => {
   const { status, close, toggleExpanded } = useChatPanelStore();
   const { t } = useTranslation('common');
+  const isTouchDevice = useIsTouchDevice();
   const queryClient = useQueryClient();
 
   // Chat state
   const [activeTab, setActiveTab] = useState<'chat' | 'files'>('chat');
-  const [messages, setMessages] = useState<IMessage[]>(() => {
-    try {
-      const stored = localStorage.getItem(`chat-history:${baseId}`);
-      if (!stored) return [];
-      const parsed: unknown = JSON.parse(stored);
-      if (
-        Array.isArray(parsed) &&
-        parsed.every(
-          (m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'
-        )
-      ) {
-        return parsed as IMessage[];
-      }
-      return [];
-    } catch {
-      return [];
-    }
-  });
+  const [messages, setMessages] = useState<IMessage[]>(() => loadStoredMessages(baseId));
   const [hasText, setHasText] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
@@ -192,10 +201,7 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
     enabled: status !== 'close',
   });
 
-  const selectedRowCount =
-    gridSelection?.addToChat && !contextDismissed && gridSelection.rows
-      ? gridSelection.rows.reduce((sum, [start, end]) => sum + (end - start + 1), 0)
-      : 0;
+  const selectedRowCount = countSelectedRows(gridSelection, contextDismissed);
 
   const selectedRecordsContext = useMemo(() => {
     if (!gridSelection?.addToChat || contextDismissed || !gridSelection.rows) return '';
@@ -448,24 +454,8 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
 
   const isFullscreen = status === 'expanded';
 
-  return (
-    <Resizable
-      className="ml-1 flex flex-col bg-background"
-      size={{ width: isFullscreen ? '100%' : panelWidth, height: '100%' }}
-      maxWidth={isFullscreen ? '100%' : '60%'}
-      minWidth="280px"
-      enable={{ left: !isFullscreen }}
-      handleClasses={{ left: 'group' }}
-      handleStyles={{ left: { width: '4px', left: '0' } }}
-      handleComponent={{
-        left: (
-          <div className="h-full w-px bg-border group-hover:px-[1.5px] group-active:px-[1.5px]" />
-        ),
-      }}
-      onResizeStop={(_e, _dir, _ref, d) => {
-        setPanelWidth((prev) => prev + d.width);
-      }}
-    >
+  const panelContent = (
+    <>
       {/* Single hidden file input shared by both tabs */}
       <input
         ref={fileInputRef}
@@ -483,18 +473,20 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
           <span className="text-sm font-medium">{t('ai.chat.title', 'AI Chat')}</span>
         </div>
         <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={toggleExpanded}
-            title={status === 'expanded' ? t('ai.chat.exitFullscreen') : t('ai.chat.fullscreen')}
-          >
-            {status === 'expanded' ? (
-              <Minimize2 className="size-4" />
-            ) : (
-              <Maximize2 className="size-4" />
-            )}
-          </Button>
+          {!isTouchDevice && (
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={toggleExpanded}
+              title={status === 'expanded' ? t('ai.chat.exitFullscreen') : t('ai.chat.fullscreen')}
+            >
+              {status === 'expanded' ? (
+                <Minimize2 className="size-4" />
+              ) : (
+                <Maximize2 className="size-4" />
+              )}
+            </Button>
+          )}
           <Button variant="ghost" size="xs" onClick={close} title={t('actions.close')}>
             <X className="size-4" />
           </Button>
@@ -785,6 +777,34 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
           </div>
         </div>
       )}
+    </>
+  );
+
+  if (isTouchDevice) {
+    return (
+      <div className={cn('fixed inset-0 z-50 flex flex-col bg-background')}>{panelContent}</div>
+    );
+  }
+
+  return (
+    <Resizable
+      className="ml-1 flex flex-col bg-background"
+      size={{ width: isFullscreen ? '100%' : panelWidth, height: '100%' }}
+      maxWidth={isFullscreen ? '100%' : '60%'}
+      minWidth="280px"
+      enable={{ left: !isFullscreen }}
+      handleClasses={{ left: 'group' }}
+      handleStyles={{ left: { width: '4px', left: '0' } }}
+      handleComponent={{
+        left: (
+          <div className="h-full w-px bg-border group-hover:px-[1.5px] group-active:px-[1.5px]" />
+        ),
+      }}
+      onResizeStop={(_e, _dir, _ref, d) => {
+        setPanelWidth((prev) => prev + d.width);
+      }}
+    >
+      {panelContent}
     </Resizable>
   );
 };
