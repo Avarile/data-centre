@@ -1,0 +1,39 @@
+import { useTranslation } from 'next-i18next';
+
+interface IChatPanelTabsProps {
+  activeTab: 'chat' | 'files';
+  fileCount: number;
+  onTabChange: (tab: 'chat' | 'files') => void;
+}
+
+export const ChatPanelTabs = ({ activeTab, fileCount, onTabChange }: IChatPanelTabsProps) => {
+  const { t } = useTranslation('common');
+
+  return (
+    <div className="flex shrink-0 border-b text-sm">
+      <button
+        className={`px-4 py-1.5 font-medium transition-colors ${
+          activeTab === 'chat'
+            ? 'border-b-2 border-primary text-foreground'
+            : 'text-muted-foreground hover:text-foreground'
+        }`}
+        onClick={() => onTabChange('chat')}
+      >
+        {t('ai.chat.tabChat', 'Chat')}
+      </button>
+      <button
+        className={`flex items-center gap-1 px-4 py-1.5 font-medium transition-colors ${
+          activeTab === 'files'
+            ? 'border-b-2 border-primary text-foreground'
+            : 'text-muted-foreground hover:text-foreground'
+        }`}
+        onClick={() => onTabChange('files')}
+      >
+        {t('ai.chat.tabFiles', 'Files')}
+        {fileCount > 0 && (
+          <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs">{fileCount}</span>
+        )}
+      </button>
+    </div>
+  );
+};

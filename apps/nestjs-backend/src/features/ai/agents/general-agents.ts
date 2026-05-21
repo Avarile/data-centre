@@ -26,7 +26,7 @@ function getPool(): Pool | null {
 
 // ─── Sandbox abstraction ──────────────────────────────────────────────────────
 
-interface ISandbox {
+export interface ISandbox {
   readFile(filePath: string, encoding: 'utf-8'): Promise<string>;
   readdir(
     dirPath: string,
@@ -36,7 +36,7 @@ interface ISandbox {
   query(sql: string, params?: unknown[]): Promise<{ rows: unknown[]; rowCount: number }>;
 }
 
-function createNodeSandbox(workingDirectory: string): ISandbox {
+export function createNodeSandbox(workingDirectory: string): ISandbox {
   return {
     async readFile(filePath) {
       const resolved = path.isAbsolute(filePath) ? filePath : path.join(workingDirectory, filePath);
@@ -73,7 +73,7 @@ function createNodeSandbox(workingDirectory: string): ISandbox {
 
 // ─── Skill discovery ──────────────────────────────────────────────────────────
 
-interface ISkillMetadata {
+export interface ISkillMetadata {
   name: string;
   description: string;
   path: string;
@@ -106,7 +106,10 @@ function stripFrontmatter(content: string): string {
 /**
  * Scans each given directory for sub-folders that contain a SKILL.md file.
  */
-async function discoverSkills(sandbox: ISandbox, directories: string[]): Promise<ISkillMetadata[]> {
+export async function discoverSkills(
+  sandbox: ISandbox,
+  directories: string[]
+): Promise<ISkillMetadata[]> {
   const skills: ISkillMetadata[] = [];
   const seenNames = new Set<string>();
 
@@ -147,7 +150,7 @@ async function discoverSkills(sandbox: ISandbox, directories: string[]): Promise
 
 // ─── System prompt builder ────────────────────────────────────────────────────
 
-function buildSkillsPrompt(skills: ISkillMetadata[]): string {
+export function buildSkillsPrompt(skills: ISkillMetadata[]): string {
   const skillsList = skills.map((s) => `- ${s.name}: ${s.description}`).join('\n');
 
   return `
@@ -163,11 +166,11 @@ ${skillsList}`;
 // ─── Tools ────────────────────────────────────────────────────────────────────
 
 // Mutable per-request state shared across tool calls within the same agent invocation.
-interface IContextState {
+export interface IContextState {
   skillDir?: string;
 }
 
-const loadSkillTool = tool({
+export const loadSkillTool = tool({
   description:
     'Load a skill to get its full instructions and discover the path to its bundled ' +
     'scripts, references, and asset templates.',
@@ -201,7 +204,7 @@ const loadSkillTool = tool({
   },
 });
 
-const readFileTool = tool({
+export const readFileTool = tool({
   description:
     'Read a file from the filesystem. Use this to load skill reference docs ' +
     '(e.g. references/contacts.md) or asset templates (e.g. assets/payload-templates.json) ' +
@@ -219,7 +222,7 @@ const readFileTool = tool({
   },
 });
 
-const bashTool = tool({
+export const bashTool = tool({
   description:
     'Execute a shell command in the skill working directory. ' +
     'Use this to run skill scripts, e.g.: ' +
@@ -252,7 +255,7 @@ const bashTool = tool({
   },
 });
 
-const queryDatabaseTool = tool({
+export const queryDatabaseTool = tool({
   description:
     'Execute a read-only SELECT query directly against the PostgreSQL database. ' +
     'Use $1, $2, ... placeholders for parameters. ' +
@@ -279,7 +282,7 @@ const queryDatabaseTool = tool({
   },
 });
 
-const loadDatabaseSchemaTool = tool({
+export const loadDatabaseSchemaTool = tool({
   description:
     'Discover the live database schema: all spaces, bases, tables, fields, and link relationships. ' +
     'MUST be called before any queryDatabase or bash call so you know the correct table IDs, ' +
@@ -521,14 +524,17 @@ For link fields, the value is a JSONB array of objects with a "title" key:
 // skills are available immediately without requiring a rebuild first.
 const distSandboxDir = path.join(__dirname, 'features', 'ai');
 const srcSandboxDir = path.resolve(__dirname, '..', 'src', 'features', 'ai');
-const skillSearchDir = fs.existsSync(path.join(distSandboxDir, 'sandbox', 'SKILL.md'))
+export const skillSearchDir = fs.existsSync(path.join(distSandboxDir, 'sandbox', 'SKILL.md'))
   ? distSandboxDir
   : srcSandboxDir;
 
 // Lazy singleton — skills are discovered once on first request and reused.
 let cachedSkillsPromise: Promise<ISkillMetadata[]> | null = null;
 
-function getOrDiscoverSkills(sandbox: ISandbox, directories: string[]): Promise<ISkillMetadata[]> {
+export function getOrDiscoverSkills(
+  sandbox: ISandbox,
+  directories: string[]
+): Promise<ISkillMetadata[]> {
   if (!cachedSkillsPromise) {
     cachedSkillsPromise = discoverSkills(sandbox, directories);
   }
