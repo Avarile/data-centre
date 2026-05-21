@@ -1,38 +1,37 @@
 import { useTranslation } from 'next-i18next';
 
 interface IChatPanelTabsProps {
-  activeTab: 'chat' | 'files';
+  activeTab: 'chat' | 'files' | 'ingest';
   fileCount: number;
-  onTabChange: (tab: 'chat' | 'files') => void;
+  onTabChange: (tab: 'chat' | 'files' | 'ingest') => void;
 }
 
 export const ChatPanelTabs = ({ activeTab, fileCount, onTabChange }: IChatPanelTabsProps) => {
   const { t } = useTranslation('common');
 
+  const tabClass = (tab: 'chat' | 'files' | 'ingest') =>
+    `px-4 py-1.5 font-medium transition-colors ${
+      activeTab === tab
+        ? 'border-b-2 border-primary text-foreground'
+        : 'text-muted-foreground hover:text-foreground'
+    }`;
+
   return (
     <div className="flex shrink-0 border-b text-sm">
-      <button
-        className={`px-4 py-1.5 font-medium transition-colors ${
-          activeTab === 'chat'
-            ? 'border-b-2 border-primary text-foreground'
-            : 'text-muted-foreground hover:text-foreground'
-        }`}
-        onClick={() => onTabChange('chat')}
-      >
+      <button className={tabClass('chat')} onClick={() => onTabChange('chat')}>
         {t('ai.chat.tabChat', 'Chat')}
       </button>
       <button
-        className={`flex items-center gap-1 px-4 py-1.5 font-medium transition-colors ${
-          activeTab === 'files'
-            ? 'border-b-2 border-primary text-foreground'
-            : 'text-muted-foreground hover:text-foreground'
-        }`}
+        className={`flex items-center gap-1 ${tabClass('files')}`}
         onClick={() => onTabChange('files')}
       >
         {t('ai.chat.tabFiles', 'Files')}
         {fileCount > 0 && (
           <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs">{fileCount}</span>
         )}
+      </button>
+      <button className={tabClass('ingest')} onClick={() => onTabChange('ingest')}>
+        {t('ai.chat.tabIngest', 'Ingest')}
       </button>
     </div>
   );

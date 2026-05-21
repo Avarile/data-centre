@@ -26,6 +26,7 @@ import {
   ChatPanelHeader,
   ChatPanelTabs,
   ContextBar,
+  IngestionTab,
 } from './components';
 import { countSelectedRows, loadStoredMessages, readStream } from './helpers';
 import {
@@ -46,7 +47,7 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
   const isTouchDevice = useIsTouchDevice();
   const queryClient = useQueryClient();
 
-  const [activeTab, setActiveTab] = useState<'chat' | 'files'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'files' | 'ingest'>('chat');
   const [messages, setMessages] = useState<IMessage[]>(() => loadStoredMessages(baseId));
   const [hasText, setHasText] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -378,6 +379,8 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
           onUploadClick={() => fileInputRef.current?.click()}
         />
       )}
+
+      {activeTab === 'ingest' && <IngestionTab baseId={baseId} />}
     </>
   );
 

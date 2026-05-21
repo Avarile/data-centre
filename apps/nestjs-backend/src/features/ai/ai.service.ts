@@ -34,6 +34,7 @@ import { SettingService } from '../setting/setting.service';
 import { getAdaptedProviderOptions, getTaskModelKey, modelProviders } from './util';
 import { runGeneralInfoAgent } from './agents/general-agents';
 import type { AgentInput } from './agents/general-agents';
+import { runIngestionAgent } from './agents/ingestion-agent';
 
 // Fixed name for all instance (platform-provided) providers in modelKey.
 // Instance models always end with @teable (e.g. "aiGateway@model@teable", "anthropic@model@teable").
@@ -502,6 +503,56 @@ export class AiService {
     } catch (err) {
       if (!response.headersSent) throw err;
       this.logger.error(`[generateStream] Error after headers sent: ${(err as Error).message}`);
+      response.end();
+    }
+  }
+
+  async ingestStream(
+    baseId: string,
+    files: { buffer: Buffer; mimetype: string; originalname: string }[],
+    targetTable: string,
+    description: string | undefined,
+    response: Response
+  ): Promise<void> {
+    try {
+      const config = await this.getAIConfig(baseId);
+      const modelKey = getTaskModelKey(config, Task.Coding);
+      if (!modelKey) throw new Error('Model key is not set');
+
+      const modelInstance = await this.getModelInstance(modelKey, config.llmProviders);
+
+      const fileParts = await Promise.all(
+        files.map(async (f) => {
+          const text = await this.chatFileService.extractTextFromBuffer(f.buffer, f.mimetype);
+          return text ? `--- File: ${f.originalname} ---\n${text}` : null;
+        })
+      );
+      const fileContext = fileParts.filter(Boolean).join('\n\n');
+
+      const descriptionLine = description ? `\nAdditional instructions: ${description}` : '';
+      const prompt =
+        `Ingest the following file content into the table named "${targetTable}".${descriptionLine}\n\n` +
+        `<file_context>\n${fileContext}\n</file_context>`;
+
+      response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+
+      const result = await runIngestionAgent(modelInstance, { prompt });
+
+      let totalText = 0;
+      for await (const chunk of result.textStream) {
+        if (chunk) {
+          totalText += chunk.length;
+          response.write(chunk);
+        }
+      }
+      if (totalText === 0) {
+        response.write('Ingestion completed but the agent produced no output. Please try again.');
+      }
+
+      response.end();
+    } catch (err) {
+      if (!response.headersSent) throw err;
+      this.logger.error(`[ingestStream] Error after headers sent: ${(err as Error).message}`);
       response.end();
     }
   }

@@ -170,6 +170,23 @@ export class ChatFileService {
     });
   }
 
+  async extractTextFromBuffer(buffer: Buffer, mimetype: string): Promise<string> {
+    if (mimetype === 'application/pdf') {
+      const result = await pdfParse(buffer);
+      return result.text;
+    }
+
+    if (
+      mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      mimetype === 'application/msword'
+    ) {
+      const result = await mammoth.extractRawText({ buffer });
+      return result.value;
+    }
+
+    return buffer.toString('utf-8');
+  }
+
   private async extractTextFromFile(
     bucket: string,
     path: string,
