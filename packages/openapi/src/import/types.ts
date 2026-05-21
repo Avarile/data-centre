@@ -1,5 +1,5 @@
 import { FieldType, timeZoneStringSchema } from '@teable/core';
-import { z } from 'zod';
+import { z } from '../zod';
 
 export enum SUPPORTEDTYPE {
   CSV = 'csv',

@@ -1,5 +1,5 @@
-import { z } from 'zod';
 import { IdPrefix } from '../../../utils';
+import { z } from '../../../zod';
 import { commonFieldAIConfig, FieldAIActionType } from './text';
 
 export const singleSelectFieldClassifyAIConfigSchema = commonFieldAIConfig.extend({

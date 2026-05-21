@@ -1,9 +1,9 @@
 import type { RouteConfig } from '@asteasolutions/zod-to-openapi';
 import { recordSchema } from '@teable/core';
 import type { AxiosResponse } from 'axios';
-import { z } from 'zod';
 import { axios } from '../axios';
 import { registerRoute, urlBuilder } from '../utils';
+import { z } from '../zod';
 
 export const BUTTON_CLICK = '/table/{tableId}/record/{recordId}/{fieldId}/button-click';
 

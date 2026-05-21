@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../../../zod';
 import { Colors } from '../colors';
 
 export enum SingleNumberDisplayType {

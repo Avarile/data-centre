@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/naming-convention */
-import { z } from 'zod';
+import { z } from '../zod';
 
 export enum ActionPrefix {
   Space = 'space',

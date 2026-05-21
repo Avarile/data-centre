@@ -1,5 +1,5 @@
-import { z } from 'zod';
 import type { IImageModelAbility } from '../admin';
+import { z } from '../zod';
 import { supportsImageInputForImageGeneration } from './image-generation-input-capability';
 import { IMAGE_MODEL_CONFIGS } from './image-model-catalog';
 import {

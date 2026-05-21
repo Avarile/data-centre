@@ -1,5 +1,5 @@
-import { z } from 'zod';
 import { IdPrefix } from '../../../utils';
+import { z } from '../../../zod';
 
 export enum FieldAIActionType {
   Summary = 'summary',

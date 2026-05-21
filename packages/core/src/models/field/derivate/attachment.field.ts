@@ -1,5 +1,5 @@
-import { z } from 'zod';
 import { IdPrefix } from '../../../utils';
+import { z } from '../../../zod';
 import { FieldType, CellValueType } from '../constant';
 import { FieldCore } from '../field';
 import type { IFieldVisitor } from '../field-visitor.interface';

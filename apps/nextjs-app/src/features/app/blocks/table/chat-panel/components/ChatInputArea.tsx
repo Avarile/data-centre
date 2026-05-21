@@ -12,41 +12,48 @@ import {
   ModelSelectorList,
   ModelSelectorTrigger,
 } from '../../../../../../components/ai-elements/model-selector';
-import type { PromptInputMessage } from '../../../../../../components/ai-elements/prompt-input';
 import {
   PromptInput,
   PromptInputBody,
   PromptInputButton,
   PromptInputFooter,
   PromptInputHeader,
+  PromptInputProvider,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
+  usePromptInputController,
 } from '../../../../../../components/ai-elements/prompt-input';
 import { formatBytes } from '../helpers';
 import type { IUploadingFile } from '../types';
+import { VoiceParser } from './VoiceParser';
 
 interface IChatInputAreaProps {
+  baseId: string;
   isFullscreen: boolean;
   isStreaming: boolean;
-  hasText: boolean;
+  lastAssistantMessage: string;
   chatFiles: IChatFileVo[];
   selectedFileIds: Set<string>;
   selectedFiles: IChatFileVo[];
   uploadingFiles: IUploadingFile[];
   uploadError: string | null;
-  onSubmit: (message: PromptInputMessage) => void;
+  onSubmit: (
+    // eslint-disable-next-line @typescript-eslint/consistent-type-imports
+    message: import('../../../../../../components/ai-elements/prompt-input').PromptInputMessage
+  ) => void;
   onStop: () => void;
-  onTextChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   onAttachClick: () => void;
   onToggleFileSelection: (fileId: string) => void;
   onRemoveUploadingFile: (id: string) => void;
 }
 
-export const ChatInputArea = ({
+// Inner component — has access to PromptInputProvider context for hasText derivation
+const ChatInputAreaContent = ({
+  baseId,
   isFullscreen,
   isStreaming,
-  hasText,
+  lastAssistantMessage,
   chatFiles,
   selectedFileIds,
   selectedFiles,
@@ -54,12 +61,13 @@ export const ChatInputArea = ({
   uploadError,
   onSubmit,
   onStop,
-  onTextChange,
   onAttachClick,
   onToggleFileSelection,
   onRemoveUploadingFile,
 }: IChatInputAreaProps) => {
   const { t } = useTranslation('common');
+  const controller = usePromptInputController();
+  const hasText = controller.textInput.value.trim().length > 0;
 
   const showHeader = chatFiles.length > 0 || uploadingFiles.length > 0 || !!uploadError;
 
@@ -68,7 +76,6 @@ export const ChatInputArea = ({
       <PromptInput className={isFullscreen ? 'w-1/3' : undefined} onSubmit={onSubmit}>
         <PromptInputBody>
           <PromptInputTextarea
-            onChange={onTextChange}
             placeholder={t('ai.chat.inputPlaceholder', 'Ask a question… (Enter to send)')}
           />
         </PromptInputBody>
@@ -169,6 +176,11 @@ export const ChatInputArea = ({
           )}
 
           <PromptInputTools>
+            <VoiceParser
+              baseId={baseId}
+              isStreaming={isStreaming}
+              lastAssistantMessage={lastAssistantMessage}
+            />
             <PromptInputButton
               tooltip={t('ai.chat.attachFile', 'Attach file')}
               onClick={onAttachClick}
@@ -186,3 +198,9 @@ export const ChatInputArea = ({
     </div>
   );
 };
+
+export const ChatInputArea = (props: IChatInputAreaProps) => (
+  <PromptInputProvider>
+    <ChatInputAreaContent {...props} />
+  </PromptInputProvider>
+);

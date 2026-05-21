@@ -1,6 +1,6 @@
 import type { AxiosResponse } from 'axios';
-import { z } from 'zod';
 import { axios } from '../axios';
+import { z } from '../zod';
 
 export const queryParamsRoSchema = z.object({
   params: z.record(z.string(), z.unknown()),

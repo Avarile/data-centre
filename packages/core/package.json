@@ -15,7 +15,10 @@
     "name": "tea artist",
     "url": "https://github.com/tea-artist"
   },
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/zod.ts",
+    "./dist/zod.js"
+  ],
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",

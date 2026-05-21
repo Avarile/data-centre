@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../../../zod';
 import { Colors } from '../colors';
 import type { CellValueType, FieldType } from '../constant';
 import { FieldCore } from '../field';

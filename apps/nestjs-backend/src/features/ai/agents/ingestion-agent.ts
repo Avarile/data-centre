@@ -14,7 +14,7 @@ import {
   readFileTool,
   skillSearchDir,
 } from './general-agents';
-import type { IContextState, ISkillMetadata, ISandbox } from './general-agents';
+import type { IContextState, ISandbox } from './general-agents';
 
 // ─── Call options schema ──────────────────────────────────────────────────────
 

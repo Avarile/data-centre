@@ -1,5 +1,5 @@
-import { z } from 'zod';
 import { EvalVisitor } from '../../../formula/visitor';
+import { z } from '../../../zod';
 import type { CellValueType, FieldType } from '../constant';
 import type { FieldCore } from '../field';
 import type { IFieldVisitor } from '../field-visitor.interface';

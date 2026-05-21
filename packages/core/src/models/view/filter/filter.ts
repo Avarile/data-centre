@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../../../zod';
 import type { CellValueType, FieldType } from '../../field/constant';
 import type { IConjunction } from './conjunction';
 import { and, conjunctionSchema } from './conjunction';

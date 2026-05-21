@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../../zod';
 import type { GatewayModelTag } from './gateway-model';
 
 // Detailed ability support with URL and base64 variants

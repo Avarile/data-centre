@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod';
 
 /**
  * Full set of image-size literals that Teable's image model catalog can reference.

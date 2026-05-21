@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../../zod';
 
 // Tiered pricing tier - for volume-based pricing where cost changes at token thresholds
 export const pricingTierSchema = z.object({

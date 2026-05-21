@@ -1,9 +1,9 @@
 import type { RouteConfig } from '@asteasolutions/zod-to-openapi';
-import { z } from 'zod';
 import { axios } from '../axios';
 import type { IButtonClickVo } from '../record/button-click';
 import { buttonClickVoSchema } from '../record/button-click';
 import { registerRoute, urlBuilder } from '../utils';
+import { z } from '../zod';
 
 export const SHARE_VIEW_BUTTON_CLICK =
   '/share/{shareId}/view/record/{recordId}/{fieldId}/button-click';

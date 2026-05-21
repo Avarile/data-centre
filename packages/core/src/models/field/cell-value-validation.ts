@@ -1,5 +1,5 @@
-import { z } from 'zod';
 import { assertNever } from '../../asserts';
+import { z } from '../../zod';
 import { FieldType } from './constant';
 import {
   attachmentCellValueSchema,

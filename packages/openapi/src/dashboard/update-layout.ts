@@ -1,7 +1,7 @@
 import type { RouteConfig } from '@asteasolutions/zod-to-openapi';
-import { z } from 'zod';
 import { axios } from '../axios';
 import { registerRoute, urlBuilder } from '../utils';
+import { z } from '../zod';
 import { dashboardLayoutSchema } from './types';
 
 export const UPDATE_LAYOUT_DASHBOARD = '/base/{baseId}/dashboard/{id}/layout';

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../../../zod';
 import { dataFieldCellValueSchema } from '../../field/derivate/date.field';
 import { timeZoneStringSchema } from '../../field/formatting/time-zone';
 import type { IOperator, ISymbol } from './operator';

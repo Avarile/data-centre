@@ -1,8 +1,8 @@
 import type { RouteConfig } from '@asteasolutions/zod-to-openapi';
-import { z } from 'zod';
 import { aiConfigSchema, chatModelAbilitySchema, gatewayModelTagSchema } from '../admin';
 import { axios } from '../axios';
 import { registerRoute, urlBuilder } from '../utils';
+import { z } from '../zod';
 
 export const GET_AI_CONFIG = '/{baseId}/ai/config';
 

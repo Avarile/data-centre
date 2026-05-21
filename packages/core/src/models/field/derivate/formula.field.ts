@@ -1,6 +1,6 @@
 import { ConversionVisitor, FieldReferenceVisitor } from '@teable/formula';
-import { z } from 'zod';
 import { EvalVisitor } from '../../../formula';
+import { z } from '../../../zod';
 import type { TableDomain } from '../../table/table-domain';
 import type { CellValueType } from '../constant';
 import { FieldType } from '../constant';

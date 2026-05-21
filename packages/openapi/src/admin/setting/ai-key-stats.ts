@@ -1,7 +1,7 @@
 import type { RouteConfig } from '@asteasolutions/zod-to-openapi';
-import { z } from 'zod';
 import { axios } from '../../axios';
 import { registerRoute } from '../../utils';
+import { z } from '../../zod';
 
 export const aiKeyStatsVoSchema = z.object({
   groups: z.record(

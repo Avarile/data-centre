@@ -557,6 +557,48 @@ export class AiService {
     }
   }
 
+  async tts(text: string, response: Response): Promise<void> {
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const voiceId = process.env.ELEVENLABS_VOICE_ID ?? 'EXAVITQu4vr4xnSDxMaL';
+    const modelId = process.env.ELEVENLABS_MODEL_ID ?? 'eleven_turbo_v2';
+
+    if (!apiKey) {
+      this.logger.warn('[tts] ELEVENLABS_API_KEY is not set');
+      if (!response.headersSent) {
+        response.status(503).json({ error: 'TTS service not configured' });
+      }
+      return;
+    }
+
+    try {
+      const upstream = await axios<NodeJS.ReadableStream>({
+        method: 'POST',
+        url: `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`,
+        headers: {
+          'xi-api-key': apiKey,
+          'Content-Type': 'application/json',
+          Accept: 'audio/mpeg',
+        },
+        data: { text, model_id: modelId },
+        responseType: 'stream',
+      });
+
+      response.setHeader('Content-Type', 'audio/mpeg');
+      response.setHeader('Transfer-Encoding', 'chunked');
+      upstream.data.pipe(response);
+    } catch (err) {
+      // Surface the ElevenLabs HTTP error body when available
+      const axiosErr = err as import('axios').AxiosError;
+      const detail = axiosErr.response?.status
+        ? `HTTP ${axiosErr.response.status}`
+        : (err as Error).message;
+      this.logger.error(`[tts] ElevenLabs error — ${detail} | voice=${voiceId} model=${modelId}`);
+      if (!response.headersSent) {
+        response.status(502).json({ error: 'TTS upstream error', detail });
+      }
+    }
+  }
+
   async generateText(baseId: string, aiGenerateRo: IAiGenerateRo) {
     const { prompt } = aiGenerateRo;
     const modelInstance = await this.getGenerationModelInstance(baseId, aiGenerateRo);

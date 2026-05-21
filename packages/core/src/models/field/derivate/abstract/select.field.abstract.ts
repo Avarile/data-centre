@@ -1,5 +1,5 @@
 import { keyBy } from 'lodash';
-import { z } from 'zod';
+import { z } from '../../../../zod';
 import { Colors } from '../../colors';
 import { FieldCore } from '../../field';
 

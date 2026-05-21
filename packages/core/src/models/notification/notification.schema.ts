@@ -1,5 +1,5 @@
-import { z } from 'zod';
 import { IdPrefix } from '../../utils';
+import { z } from '../../zod';
 import { NotificationTypeEnum } from './notification.enum';
 
 export const systemIconSchema = z.object({

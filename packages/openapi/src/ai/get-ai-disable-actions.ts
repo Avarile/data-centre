@@ -1,7 +1,7 @@
 import type { RouteConfig } from '@asteasolutions/zod-to-openapi';
-import { z } from 'zod';
 import { axios } from '../axios';
 import { registerRoute, urlBuilder } from '../utils';
+import { z } from '../zod';
 
 export const GET_AI_DISABLE_ACTIONS = '/{baseId}/ai/disable-ai-actions';
 

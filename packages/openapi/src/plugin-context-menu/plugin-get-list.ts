@@ -1,7 +1,7 @@
 import type { RouteConfig } from '@asteasolutions/zod-to-openapi';
-import { z } from 'zod';
 import { axios } from '../axios';
 import { registerRoute, urlBuilder } from '../utils';
+import { z } from '../zod';
 export const PLUGIN_CONTEXT_MENU_GET_LIST = '/table/{tableId}/plugin-context-menu';
 
 export const pluginContextMenuGetItemSchema = z.object({

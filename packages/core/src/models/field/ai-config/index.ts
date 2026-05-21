@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../../../zod';
 import { FieldType } from '../constant';
 import { attachmentFieldAIConfigSchema } from './attachment';
 import { dateFieldAIConfigSchema } from './date';

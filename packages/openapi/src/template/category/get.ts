@@ -1,8 +1,8 @@
 import type { RouteConfig } from '@asteasolutions/zod-to-openapi';
 import { IdPrefix } from '@teable/core';
-import { z } from 'zod';
 import { axios } from '../../axios';
 import { registerRoute, urlBuilder } from '../../utils';
+import { z } from '../../zod';
 
 export const GET_TEMPLATE_CATEGORY_LIST = '/template/category/list';
 

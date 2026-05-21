@@ -53,6 +53,17 @@ export class AiController {
     return await this.aiService.getAIDisableAIActions(baseId);
   }
 
+  @Post('/tts')
+  @Permissions('base|read')
+  async tts(
+    @Param('baseId') _baseId: string,
+    @Body() body: { text?: string },
+    @Res() res: Response
+  ) {
+    if (!body?.text?.trim()) throw new BadRequestException('text is required');
+    await this.aiService.tts(body.text.trim(), res);
+  }
+
   @Post('/ingest-stream')
   @Permissions('base|read')
   @UseInterceptors(

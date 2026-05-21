@@ -1,8 +1,8 @@
 import type { RouteConfig } from '@asteasolutions/zod-to-openapi';
-import { z } from 'zod';
 import { axios } from '../axios';
 import { BillingProductLevel, appSumoTierSchema } from '../billing';
 import { registerRoute, urlBuilder } from '../utils';
+import { z } from '../zod';
 
 export enum UsageFeature {
   NumRows = 'numRows',

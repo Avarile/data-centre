@@ -1,5 +1,5 @@
-import { z } from 'zod';
 import { axios } from '../axios';
+import { z } from '../zod';
 
 export const importStatusVoSchema = z.object({
   tableId: z.string(),

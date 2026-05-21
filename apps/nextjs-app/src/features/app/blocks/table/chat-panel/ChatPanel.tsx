@@ -49,7 +49,6 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
 
   const [activeTab, setActiveTab] = useState<'chat' | 'files' | 'ingest'>('chat');
   const [messages, setMessages] = useState<IMessage[]>(() => loadStoredMessages(baseId));
-  const [hasText, setHasText] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [contextDismissed, setContextDismissed] = useState(false);
@@ -302,9 +301,10 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
     abortRef.current?.abort();
   }, []);
 
-  const handleTextChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setHasText(e.target.value.trim().length > 0);
-  }, []);
+  const lastAssistantMessage = useMemo(() => {
+    const last = messages[messages.length - 1];
+    return last?.role === 'assistant' ? last.content : '';
+  }, [messages]);
 
   // ---------------------------------------------------------------------------
   // File delete
@@ -354,9 +354,10 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
         <>
           <ChatConversation messages={messages} isStreaming={isStreaming} isThinking={isThinking} />
           <ChatInputArea
+            baseId={baseId}
             isFullscreen={isFullscreen}
             isStreaming={isStreaming}
-            hasText={hasText}
+            lastAssistantMessage={lastAssistantMessage}
             chatFiles={chatFiles}
             selectedFileIds={selectedFileIds}
             selectedFiles={selectedFiles}
@@ -364,7 +365,6 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
             uploadError={uploadError}
             onSubmit={handleSubmit}
             onStop={handleStop}
-            onTextChange={handleTextChange}
             onAttachClick={() => fileInputRef.current?.click()}
             onToggleFileSelection={toggleFileSelection}
             onRemoveUploadingFile={removeUploadingFile}

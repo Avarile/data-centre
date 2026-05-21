@@ -1,8 +1,8 @@
 import type { RouteConfig } from '@asteasolutions/zod-to-openapi';
 import type { AxiosResponse } from 'axios';
-import { z } from 'zod';
 import { axios } from '../axios';
 import { registerRoute, urlBuilder } from '../utils';
+import { z } from '../zod';
 
 export const AUTO_FILL_CELL = '/table/{tableId}/record/{recordId}/{fieldId}/auto-fill';
 
