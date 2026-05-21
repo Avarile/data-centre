@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/naming-convention */
 import { exec } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -235,10 +236,7 @@ const bashTool = tool({
     };
 
     // Allowlist: only `node scripts/<name>.js [optional-arg]` — no path traversal, no other binaries.
-    if (
-      !/^node\s+scripts\/[a-zA-Z0-9_-]+\.js(?:\s+.*)?$/s.test(command) ||
-      command.includes('..')
-    ) {
+    if (!/^node\s+scripts\/[\w-]+\.js(?:\s.*)?$/s.test(command) || command.includes('..')) {
       return { error: 'Only `node scripts/<name>.js [arg]` commands are permitted' };
     }
 
@@ -281,6 +279,137 @@ const queryDatabaseTool = tool({
   },
 });
 
+const loadDatabaseSchemaTool = tool({
+  description:
+    'Discover the live database schema: all spaces, bases, tables, fields, and link relationships. ' +
+    'MUST be called before any queryDatabase or bash call so you know the correct table IDs, ' +
+    'field IDs, field types, and how tables relate to each other.',
+  inputSchema: z.object({
+    baseId: z
+      .string()
+      .optional()
+      .describe('Optional: restrict discovery to a single base ID (tblXXX). Omit to load all.'),
+  }),
+  execute: async ({ baseId }, { experimental_context: experimentalContext }) => {
+    const { sandbox } = experimentalContext as { sandbox: ISandbox };
+
+    const whereClause = baseId ? 'WHERE b.id = $1' : '';
+    const params: string[] = baseId ? [baseId] : [];
+
+    const tableSql = `
+      SELECT
+        tm.id          AS table_id,
+        tm.name        AS table_name,
+        tm.db_table_name,
+        b.id           AS base_id,
+        b.name         AS base_name,
+        s.id           AS space_id,
+        s.name         AS space_name
+      FROM table_meta tm
+      JOIN base b ON tm.base_id = b.id
+      JOIN space s ON b.space_id = s.id
+      ${whereClause}
+      ORDER BY s.name, b.name, tm.name
+    `;
+
+    let tables: Array<{
+      table_id: string;
+      table_name: string;
+      base_id: string;
+      base_name: string;
+      space_id: string;
+      space_name: string;
+    }>;
+    try {
+      const result = await sandbox.query(tableSql, params);
+      tables = result.rows as typeof tables;
+    } catch (err) {
+      return { error: `Failed to load tables: ${(err as Error).message}` };
+    }
+
+    if (tables.length === 0) {
+      return { error: 'No tables found. Check that the database is reachable and contains data.' };
+    }
+
+    const tableIds = tables.map((t) => t.table_id);
+
+    const fieldSql = `
+      SELECT
+        f.id          AS field_id,
+        f.name        AS field_name,
+        f.type        AS field_type,
+        f.table_id,
+        f.is_primary,
+        f.options
+      FROM field f
+      WHERE f.table_id = ANY($1)
+      ORDER BY f.table_id, f.is_primary DESC NULLS LAST, f.name
+    `;
+
+    let rawFields: Array<{
+      field_id: string;
+      field_name: string;
+      field_type: string;
+      table_id: string;
+      is_primary: boolean;
+      options: unknown;
+    }>;
+    try {
+      const result = await sandbox.query(fieldSql, [tableIds]);
+      rawFields = result.rows as typeof rawFields;
+    } catch (err) {
+      return { error: `Failed to load fields: ${(err as Error).message}` };
+    }
+
+    const schema = tables.map((table) => {
+      const fields = rawFields
+        .filter((f) => f.table_id === table.table_id)
+        .map((f) => {
+          const opts = f.options as Record<string, unknown> | null | undefined;
+          return {
+            id: f.field_id,
+            name: f.field_name,
+            type: f.field_type,
+            isPrimary: f.is_primary,
+            linkedTableId:
+              f.field_type === 'link' && opts
+                ? (opts['foreignTableId'] as string | undefined)
+                : undefined,
+            selectOptions:
+              (f.field_type === 'singleSelect' || f.field_type === 'multipleSelect') && opts
+                ? ((opts['choices'] as Array<{ name: string }> | undefined) ?? []).map(
+                    (c) => c.name
+                  )
+                : undefined,
+          };
+        });
+
+      return { ...table, fields };
+    });
+
+    // Build a human-readable relationship summary
+    const links: string[] = [];
+    for (const table of schema) {
+      for (const field of table.fields) {
+        if (field.linkedTableId) {
+          const target = schema.find((t) => t.table_id === field.linkedTableId);
+          if (target) {
+            links.push(
+              `${table.table_name} (${table.table_id}).${field.name} (${field.id}) → ${target.table_name} (${target.table_id})`
+            );
+          }
+        }
+      }
+    }
+
+    return {
+      tableCount: schema.length,
+      schema,
+      relationshipSummary: links,
+    };
+  },
+});
+
 // ─── Call options schema ──────────────────────────────────────────────────────
 
 const callOptionsSchema = z.object({
@@ -304,166 +433,71 @@ export function createGeneralInfoAgent(model: LanguageModel): ToolLoopAgent<ICal
     model,
     instructions: `You are a general information analysis agent for a data centre management system.
 
-You can query and update an organisational database that tracks contacts, tasks, projects,
-departments, goals, roles, SaaS applications, licences, knowledge articles, and IT support tickets.
+You can query and update an organisational database. The database schema is NOT fixed — it
+evolves over time, so you must discover it live on every request.
 
-When the user asks for information or an action that involves the database:
-1. Identify which entity or entities are relevant.
-2. Call \`loadSkill\` with the matching skill name to receive precise instructions,
-   field IDs, and the path to helper scripts and reference files.
-3. Use \`readFile\` to read any reference or asset files listed in the skill.
-4. Use \`bash\` to execute the appropriate script (get-records, create-records,
-   update-record, delete-record, or lookup-link-id) with a JSON argument.
-5. After ALL tool calls are complete, you MUST write a final response to the user.
-   - If records were found: summarise the key details in a readable format.
-   - If nothing was found: explicitly state what you searched for and that no matching
-     records exist. Suggest alternative search terms or related tables to check.
-   - Never end your turn after a tool call without producing a text response.
-   - Never produce only pre-tool narration (e.g. "Let me search...") as your final output.
+## Mandatory 3-step workflow for any database-related request
 
-When executing database scripts always:
-- Use field IDs (fldXXX) for filter and orderBy parameters.
-- Use display names for record field values (fieldKeyType=name is automatic).
-- Resolve link field record IDs with lookup-link-id.js before creating or updating records.
-- Never write to READ-ONLY fields (record_id, created_at, rollup fields).
+### Step 1 — Confirm the database and load the schema
+Call \`loadDatabaseSchema\` (no arguments needed for a full discovery) BEFORE any other
+database operation. This will return:
+- All spaces, bases, and tables (with their IDs)
+- All fields per table (field ID, name, type, whether it is the primary/label field)
+- Link relationships between tables (which field in table A points to table B)
+- Select/multi-select option values
 
-You also have a \`queryDatabase\` tool for read-only SQL queries directly against the
-PostgreSQL database. Use it when you need:
-- Joins across multiple tables
-- Aggregations (COUNT, SUM, AVG, GROUP BY)
-- Schema introspection (information_schema.tables / columns)
-- Queries not easily expressed through the bash scripts
+You must be aware of:
+  - How many tables exist and what they are named
+  - The exact table_id (tblXXX) and field_id (fldXXX) for each table and field
+  - Which fields are link fields and what table they point to
 
-Always use parameterised queries ($1, $2, ...) and never include user-supplied
-strings directly in SQL.
+### Step 2 — Plan and execute the query
+Using the discovered schema:
+1. Identify which table(s) are relevant to the user's request.
+2. If the request involves skills (e.g. creating or updating records), call \`loadSkill\`
+   with the matching skill name for precise scripting instructions, then use \`readFile\`
+   and \`bash\` accordingly.
+3. For read-only lookups, joins, or aggregations, use \`queryDatabase\` with the real
+   field IDs and table IDs obtained in Step 1.
+4. Always use parameterised queries ($1, $2, ...) — never interpolate user strings into SQL.
 
-## Teable Internal Schema
+### Step 3 — Return a clear answer
+After ALL tool calls are complete, write a final text response to the user.
+- If records were found: summarise the key details in a readable format.
+- If nothing was found: state what was searched and suggest alternatives.
+- Never end your turn after a tool call without a text response.
+- Never output only pre-tool narration (e.g. "Let me search...") as your final output.
+
+## Teable internal PostgreSQL structure
 
 Teable stores data in a three-level hierarchy:
-  space (workspace) → base → table_meta → record
+  space → base → table_meta → record
 
-Key PostgreSQL tables:
+Key system tables:
   - "space"       — workspaces (id, name)
-  - "base"        — databases/bases within a space (id, name, space_id)
+  - "base"        — databases/bases (id, name, space_id)
   - "table_meta"  — table definitions (id, name, base_id, db_table_name)
-  - "field"       — field/column definitions per table (id, name, type, table_id)
-  - "record"      — rows, one row per Teable record; field values stored in the "fields" JSONB column keyed by field ID
+  - "field"       — column definitions (id, name, type, table_id, is_primary, options JSONB)
+  - "record"      — rows; field values live in the "fields" JSONB column keyed by field ID
 
-To query record data via SQL, join through table_meta → record and use the "fields" JSONB column:
-  SELECT r.fields->>'fldXXX' AS field_value FROM record r
-  JOIN table_meta tm ON r.table_id = tm.id
-  WHERE tm.id = 'tblXXX';
-
-## Application Table Registry
-
-All business data lives in these 14 Teable tables. Each table ID is the \`table_id\` in the record table.
-
-### Lookup / Reference tables (read before creating linked records)
-| Table Name         | Table ID              | Primary field (Label fldID)              | Purpose |
-|--------------------|-----------------------|------------------------------------------|---------|
-| contact-type       | tblXWCU7zG6yVPpnH50  | fldnyYl4qoi7Rj2vuWH                      | Classifies a contact (e.g. Employee, Contractor, Vendor). REQUIRED when creating contacts. |
-| contact-profession | tblSceUZHrMe5psnhCZ  | fldSKRAlDgG0I9HuUld                      | The profession / job discipline of a contact. |
-| knowledge-type     | tbl2vKKo0l3RfSvKzM1  | fldkBfd3ambfvY33532                      | Category for knowledge articles. |
-
-### Core entity tables
-| Table Name        | Table ID              | Primary field (Label fldID)              | Purpose |
-|-------------------|-----------------------|------------------------------------------|---------|
-| contacts          | tblBVWS56TLkQqW3J4z  | fldCwghjVZqx0SBTQSH                      | People — employees, contractors, vendors etc. |
-| departments       | tblLalSqgqccQQ9eehi  | fldGv6a7UyZeoSKvsj9                      | Organisational departments. |
-| roles             | tblZJc88eoY1SPWmtdg  | fld25zMEwmPljt7ZIhp                      | Job roles / positions. |
-| tasks             | tblEtuOcO68wvO2nCoM  | fldPe1ctffKlzdVjJyp                      | Work tasks with status lifecycle. |
-| daily-task-view   | tblfVf2gSF1axjKxXAP  | fldG6PfABHNZvyZ1o7h                      | Daily grouping of tasks; rollup counts delivered vs total. |
-| projects          | tbluBET7kwcH7WDUxVf  | fldFRlJHm1dEuamLKpX                      | Projects that contain tasks and link to goals. |
-| goals             | tblJBmCNhL3D3nqgWl5  | fldm0XMjAcfl0Cqz7Zm                      | Strategic goals; type = milestone or objective. |
-| applications      | tbl46utYSpisOZ94FXE  | fldvVqLa4A5ShgedTJj                      | SaaS applications the company subscribes to. |
-| licences          | tbl9fT4iH6G4GXzdA9B  | fldx5XCSERLvj8xmE4m                      | Junction: one contact ↔ one application, with access_level. |
-| knowledges        | tblFH854k0qcvWMaXUx  | fldNAitxen8e6dr7QF5                      | Knowledge-base articles; may have attachments. |
-| it-support-ticket | tbl8Ule7YoA9LrViroC  | fldQx8eP9mcsy8II7Q4                      | IT helpdesk tickets. |
-
-## Relationship Map
-
-Read left-to-right as "table A links to table B via field":
-
-contacts (tblBVWS56TLkQqW3J4z)
-  fldvakGkDtRXYOEBNxu  internal_contact_type     → contact-type  [REQUIRED, single link]
-  fld5jvIWvcZm7waQiBr  internal_contact_profession → contact-profession
-  fldH533OMLkSWAmQiYA  tasks                      → tasks
-  fldboPhfNXcf1GJtVYN  projects                   → projects
-  fldluX15rOczzzhznKH  department                 → departments
-  fld2ilgjEnTHPah0SKX  role                       → roles
-
-tasks (tblEtuOcO68wvO2nCoM)
-  fldvUeNsKu56NoQ8lHM  assigned_to                → contacts
-  fldhS1tK8YWkT921lFQ  project_name               → projects
-  fld3gARpWaNluRUwTwZ  knowledge_involved         → knowledges
-
-daily-task-view (tblfVf2gSF1axjKxXAP)
-  fldnox69ipS2mXWUoip  daily_tasks                → tasks  [rollup: task_delivered, task_total]
-
-projects (tbluBET7kwcH7WDUxVf)
-  fldyGfTOcDPSX46pcBr  tasks                      → tasks
-  fldIaCVQ2ErzGwHEwgg  lead_by                    → contacts
-  fld7a95yKf4hgCyIV2x  goal                       → goals
-
-departments (tblLalSqgqccQQ9eehi)
-  fldXF2qhneT4SdnsZHz  contacts                   → contacts
-
-roles (tblZJc88eoY1SPWmtdg)
-  fldluJKyKVAncY86goO  contacts                   → contacts
-
-applications (tbl46utYSpisOZ94FXE)
-  fldx7LpNO4Jx65zYZFw  licences                   → licences
-
-licences (tbl9fT4iH6G4GXzdA9B)  ← junction table
-  fldiz8LvNpayZWDnRuM  user                       → contacts
-  fldA25l18psqCWCbmek  application                → applications
-  fldw6ftC6qP18mI0dJF  access_level               (options: user, power_user, admin, super_admin, disabled)
-
-knowledges (tblFH854k0qcvWMaXUx)
-  fld6AGvzdXknJXirdJy  knowledge_type             → knowledge-type
-  fldcGWoaSJk7BfHKCYR  tasks                      → tasks
-
-it-support-ticket (tbl8Ule7YoA9LrViroC)
-  flduXjEXWtCxpIlgoUW  requester_name             → contacts
-  fld17eWiUPc7HihzO8R  assigned_to                → contacts
-  fld2L563WzZ9lIbFkNl  type    (options: Hardware, Software, Network, Onboard, Offboard, Access issues, Credential updates, Other)
-  fldJRDkWVoUYCtxw9Gs  priority (options: Critical, High, Medium, Low)
-  fld4NzF52VlXTYtlA9v  status   (options: Open, In Progress, On Hold, Resolved, Closed)
-
-contact-type (tblXWCU7zG6yVPpnH50)
-  fld9dMELOhAw618pDKR  contacts-internal          → contacts  [reverse side of contacts.internal_contact_type]
-
-contact-profession (tblSceUZHrMe5psnhCZ)
-  fld3WhZxZox1r55OSp0  contacts-internal          → contacts  [reverse side of contacts.internal_contact_profession]
-
-knowledge-type (tbl2vKKo0l3RfSvKzM1)
-  fldHcnuYGYRRcS2uuhX  knowledges                 → knowledges  [reverse side of knowledges.knowledge_type]
-
-goals (tblJBmCNhL3D3nqgWl5)
-  fldEaHXR6bqsh68Y9BT  goal_type (options: milestone, objective)
-
-## Common Query Patterns
-
-To find all tasks for a contact by name (SQL):
-  SELECT r.fields->>'fldPe1ctffKlzdVjJyp' AS task_label,
-         r.fields->>'fldsf3yMmXHyvxE3L6w' AS status
+To query record data via SQL after discovering the schema:
+  SELECT r.fields->>'<field_id>' AS field_value
   FROM record r
-  WHERE r.table_id = 'tblEtuOcO68wvO2nCoM'
-    AND r.fields->'fldvUeNsKu56NoQ8lHM' @> $1::jsonb;
-  -- $1 = '[{"title":"<contact Label>"}]'
+  WHERE r.table_id = '<table_id>';
 
-To list all licences for an application (SQL):
-  SELECT r.fields->>'fldx5XCSERLvj8xmE4m' AS licence_label,
-         r.fields->>'fldw6ftC6qP18mI0dJF' AS access_level
-  FROM record r
-  WHERE r.table_id = 'tbl9fT4iH6G4GXzdA9B'
-    AND r.fields->'fldA25l18psqCWCbmek' @> $1::jsonb;
-  -- $1 = '[{"title":"<application Label>"}]'`,
+For link fields, the value is a JSONB array of objects with a "title" key:
+  r.fields->'<link_field_id>' @> '[{"title":"<label>"}]'::jsonb
+
+## General rules
+- Use field IDs (fldXXX) for filter and orderBy parameters, never display names.
+- Resolve link field record IDs with lookup-link-id.js before creating or updating records.
+- Never write to read-only fields (record_id, created_at, rollup fields).`,
     tools: {
       loadSkill: loadSkillTool,
       readFile: readFileTool,
       bash: bashTool,
       queryDatabase: queryDatabaseTool,
+      loadDatabaseSchema: loadDatabaseSchemaTool,
     },
     callOptionsSchema,
     maxRetries: 5,
