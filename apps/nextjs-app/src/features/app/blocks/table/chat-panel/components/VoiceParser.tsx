@@ -72,33 +72,59 @@ export const VoiceParser = ({ baseId, isStreaming, lastAssistantMessage }: IVoic
   }, []);
 
   const playTts = useCallback(
-    async (text: string) => {
+    async (text: string, fromUserGesture = false) => {
       if (!text.trim()) return;
 
       stopSpeaking();
+
+      // Unlock the audio element within the current user gesture so that the
+      // subsequent play() call after the async fetch is not blocked by autoplay
+      // policy (browsers expire transient activation after ~5 s).
+      if (fromUserGesture) {
+        if (!audioRef.current) {
+          audioRef.current = new Audio();
+        }
+        audioRef.current.src = '';
+        audioRef.current.load();
+      }
 
       const abortCtrl = new AbortController();
       ttsAbortRef.current = abortCtrl;
 
       try {
         const res = await aiTtsStream(baseId, text, abortCtrl.signal);
-        if (!res.ok || !res.body) return;
+        if (!res.ok || !res.body) {
+          console.error('[TTS] bad response:', res.status);
+          return;
+        }
 
         const blob = await res.blob();
+        if (blob.size === 0) {
+          console.error('[TTS] received empty audio blob');
+          return;
+        }
+
         const url = URL.createObjectURL(blob);
 
         if (!audioRef.current) {
           audioRef.current = new Audio();
         }
-        audioRef.current.src = url;
-        audioRef.current.onended = () => {
+        const audio = audioRef.current;
+        audio.onerror = (e) => {
+          console.error('[TTS] audio element error:', e);
           URL.revokeObjectURL(url);
           setIsSpeaking(false);
         };
+        audio.onended = () => {
+          URL.revokeObjectURL(url);
+          setIsSpeaking(false);
+        };
+        audio.src = url;
         setIsSpeaking(true);
-        await audioRef.current.play();
+        await audio.play();
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
+        console.error('[TTS] play error:', err);
         setIsSpeaking(false);
       }
     },
@@ -157,13 +183,15 @@ export const VoiceParser = ({ baseId, isStreaming, lastAssistantMessage }: IVoic
     }
   }, [isListening]);
 
-  // Auto-play TTS after each AI reply when voice mode is active
+  // Auto-play TTS after each AI reply when voice mode is active.
+  // fromUserGesture is false here — we rely on sticky activation from the
+  // prior mic-button click; if the browser blocks it the error is logged.
   useEffect(() => {
     const justFinished = prevIsStreamingRef.current && !isStreaming;
     prevIsStreamingRef.current = isStreaming;
 
     if (!justFinished || !isVoiceActive) return;
-    void playTts(lastAssistantMessage);
+    void playTts(lastAssistantMessage, false);
   }, [isStreaming, isVoiceActive, lastAssistantMessage, playTts]);
 
   // Cleanup on unmount
@@ -186,7 +214,7 @@ export const VoiceParser = ({ baseId, isStreaming, lastAssistantMessage }: IVoic
       <PromptInputButton
         tooltip={isSpeaking ? 'Stop reading' : 'Read response aloud'}
         disabled={!canSpeak && !isSpeaking}
-        onClick={() => (isSpeaking ? stopSpeaking() : void playTts(lastAssistantMessage))}
+        onClick={() => (isSpeaking ? stopSpeaking() : void playTts(lastAssistantMessage, true))}
       >
         {isSpeaking ? (
           <StopCircle className="size-4 text-primary" />

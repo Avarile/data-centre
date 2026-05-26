@@ -92,7 +92,7 @@ export class GenerationService {
           input = { prompt: await this.injectFileContext(prompt ?? '', fileTokens) };
         }
 
-        const result = await runGeneralInfoAgent(modelInstance, input);
+        const result = await runGeneralInfoAgent(modelInstance, input, baseId);
 
         let totalText = 0;
         for await (const chunk of result.textStream) {

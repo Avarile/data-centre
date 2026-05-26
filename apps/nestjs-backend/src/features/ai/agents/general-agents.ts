@@ -425,6 +425,7 @@ const callOptionsSchema = z.object({
     })
   ),
   state: z.custom<IContextState>(),
+  baseId: z.string().optional(),
 });
 
 type ICallOptions = z.infer<typeof callOptionsSchema>;
@@ -504,15 +505,20 @@ For link fields, the value is a JSONB array of objects with a "title" key:
     },
     callOptionsSchema,
     maxRetries: 5,
-    prepareCall: ({ options, ...settings }) => ({
-      ...settings,
-      instructions: `${settings.instructions ?? ''}\n\n${buildSkillsPrompt(options.skills)}`,
-      experimental_context: {
-        sandbox: options.sandbox,
-        skills: options.skills,
-        state: options.state,
-      },
-    }),
+    prepareCall: ({ options, ...settings }) => {
+      const baseContext = options.baseId
+        ? `\n\n## Current Base\nYou are operating in base ID: ${options.baseId}. When calling \`loadDatabaseSchema\`, always pass \`baseId: "${options.baseId}"\` to restrict the schema to this base. Never ask the user which base to use.`
+        : '';
+      return {
+        ...settings,
+        instructions: `${settings.instructions ?? ''}${baseContext}\n\n${buildSkillsPrompt(options.skills)}`,
+        experimental_context: {
+          sandbox: options.sandbox,
+          skills: options.skills,
+          state: options.state,
+        },
+      };
+    },
   });
 }
 
@@ -545,7 +551,11 @@ export type AgentInput =
   | { prompt: string; messages?: never }
   | { messages: ModelMessage[]; prompt?: never };
 
-export async function runGeneralInfoAgent(model: LanguageModel, input: AgentInput) {
+export async function runGeneralInfoAgent(
+  model: LanguageModel,
+  input: AgentInput,
+  baseId?: string
+) {
   const sandbox = createNodeSandbox(skillSearchDir);
   const skills = await getOrDiscoverSkills(sandbox, [skillSearchDir]);
 
@@ -553,7 +563,7 @@ export async function runGeneralInfoAgent(model: LanguageModel, input: AgentInpu
 
   return agent.stream({
     ...input,
-    options: { sandbox, skills, state: {} },
+    options: { sandbox, skills, state: {}, baseId },
     abortSignal: AbortSignal.timeout(90_000),
   });
 }
