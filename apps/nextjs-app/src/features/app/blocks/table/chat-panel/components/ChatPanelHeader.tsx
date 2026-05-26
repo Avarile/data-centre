@@ -1,5 +1,16 @@
-import { Maximize2, MessageSquare, Minimize2, X } from '@teable/icons';
-import { Button } from '@teable/ui-lib/shadcn';
+import { Maximize2, MessageSquare, Minimize2, Trash2, X } from '@teable/icons';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+  Button,
+} from '@teable/ui-lib/shadcn';
 import { useTranslation } from 'next-i18next';
 
 interface IChatPanelHeaderProps {
@@ -7,6 +18,7 @@ interface IChatPanelHeaderProps {
   isTouchDevice: boolean;
   onClose: () => void;
   onToggleExpanded: () => void;
+  onClearSession: () => void;
 }
 
 export const ChatPanelHeader = ({
@@ -14,6 +26,7 @@ export const ChatPanelHeader = ({
   isTouchDevice,
   onClose,
   onToggleExpanded,
+  onClearSession,
 }: IChatPanelHeaderProps) => {
   const { t } = useTranslation('common');
 
@@ -24,6 +37,32 @@ export const ChatPanelHeader = ({
         <span className="text-sm font-medium">{t('ai.chat.title', 'AI Chat')}</span>
       </div>
       <div className="flex items-center gap-1">
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="ghost" size="xs" title={t('ai.chat.clearSession', 'Clear session')}>
+              <Trash2 className="size-4" />
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t('ai.chat.clearSessionTitle', 'Clear conversation?')}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t(
+                  'ai.chat.clearSessionDescription',
+                  'This will permanently delete all messages in this session. This action cannot be undone.'
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{t('actions.cancel', 'Cancel')}</AlertDialogCancel>
+              <AlertDialogAction onClick={onClearSession}>
+                {t('actions.delete', 'Delete')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         {!isTouchDevice && (
           <Button
             variant="ghost"

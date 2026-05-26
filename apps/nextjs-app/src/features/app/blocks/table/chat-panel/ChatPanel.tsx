@@ -301,6 +301,18 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
     abortRef.current?.abort();
   }, []);
 
+  const handleClearSession = useCallback(() => {
+    abortRef.current?.abort();
+    setMessages([]);
+    setIsStreaming(false);
+    setIsThinking(false);
+    try {
+      localStorage.removeItem(`chat-history:${baseId}`);
+    } catch {
+      // localStorage unavailable
+    }
+  }, [baseId]);
+
   const lastAssistantMessage = useMemo(() => {
     const last = messages[messages.length - 1];
     return last?.role === 'assistant' ? last.content : '';
@@ -338,6 +350,7 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
         isTouchDevice={isTouchDevice}
         onClose={close}
         onToggleExpanded={toggleExpanded}
+        onClearSession={handleClearSession}
       />
 
       <ChatPanelTabs
