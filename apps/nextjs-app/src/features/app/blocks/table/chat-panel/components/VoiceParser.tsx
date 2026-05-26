@@ -33,6 +33,42 @@ declare global {
   }
 }
 
+// Strip markdown and emoji from AI output before sending to TTS.
+// Keeps only plain readable prose — tables, code blocks, and decorative
+// characters add noise and confuse the speech model.
+function stripForTts(raw: string): string {
+  return (
+    raw
+      // Fenced code blocks (``` or ~~~)
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/~~~[\s\S]*?~~~/g, '')
+      // Markdown table rows: any line fully wrapped in pipes
+      .replace(/^\|.+\|$/gm, '')
+      // Leftover table separator lines (--|--|-- or :---:)
+      .replace(/^[-|: ]+$/gm, '')
+      // Inline code
+      .replace(/`[^`\n]+`/g, '')
+      // ATX headings (# Heading → Heading)
+      .replace(/^#{1,6}\s+/gm, '')
+      // Bold / italic markers — preserve inner text
+      .replace(/\*{1,3}([^*\n]+)\*{1,3}/g, '$1')
+      .replace(/_{1,3}([^_\n]+)_{1,3}/g, '$1')
+      // Images: ![alt](url) → alt
+      .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+      // Links: [label](url) → label
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+      // HTML tags
+      .replace(/<[^>]+>/g, '')
+      // Emojis (Extended_Pictographic covers all standard emoji code points)
+      .replace(/\p{Extended_Pictographic}/gu, '')
+      // Leftover variation selectors and ZWJ from emoji sequences
+      .replace(/[\u{FE00}-\u{FE0F}\u{200D}]/gu, '')
+      // Collapse multiple blank lines
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  );
+}
+
 interface IVoiceParserProps {
   baseId: string;
   isStreaming: boolean;
@@ -88,11 +124,14 @@ export const VoiceParser = ({ baseId, isStreaming, lastAssistantMessage }: IVoic
         audioRef.current.load();
       }
 
+      const cleanText = stripForTts(text);
+      if (!cleanText) return;
+
       const abortCtrl = new AbortController();
       ttsAbortRef.current = abortCtrl;
 
       try {
-        const res = await aiTtsStream(baseId, text, abortCtrl.signal);
+        const res = await aiTtsStream(baseId, cleanText, abortCtrl.signal);
         if (!res.ok || !res.body) {
           console.error('[TTS] bad response:', res.status);
           return;

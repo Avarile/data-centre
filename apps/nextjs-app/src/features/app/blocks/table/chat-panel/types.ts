@@ -1,6 +1,7 @@
 export interface IMessage {
   role: 'user' | 'assistant';
   content: string;
+  reasoning?: string;
 }
 
 export interface IGridSelection {

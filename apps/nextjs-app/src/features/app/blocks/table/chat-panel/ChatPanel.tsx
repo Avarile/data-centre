@@ -223,16 +223,44 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
 
       let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 
+      // \x00 is the separator emitted by the backend between reasoning and final answer.
+      const SEPARATOR = '\x00';
+      let answerMode = false;
+
       const appendChunk = (chunk: string) => {
         setIsThinking(false);
-        setMessages((prev) => {
-          const updated = [...prev];
-          updated[updated.length - 1] = {
-            ...updated[updated.length - 1],
-            content: updated[updated.length - 1].content + chunk,
-          };
-          return updated;
-        });
+
+        const sepIdx = chunk.indexOf(SEPARATOR);
+        if (sepIdx !== -1) {
+          const reasoningPart = chunk.slice(0, sepIdx);
+          const answerPart = chunk.slice(sepIdx + 1);
+          answerMode = true;
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = { ...updated[updated.length - 1] };
+            if (reasoningPart) last.reasoning = (last.reasoning ?? '') + reasoningPart;
+            if (answerPart) last.content = last.content + answerPart;
+            updated[updated.length - 1] = last;
+            return updated;
+          });
+        } else if (answerMode) {
+          setMessages((prev) => {
+            const updated = [...prev];
+            updated[updated.length - 1] = {
+              ...updated[updated.length - 1],
+              content: updated[updated.length - 1].content + chunk,
+            };
+            return updated;
+          });
+        } else {
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = { ...updated[updated.length - 1] };
+            last.reasoning = (last.reasoning ?? '') + chunk;
+            updated[updated.length - 1] = last;
+            return updated;
+          });
+        }
       };
 
       try {

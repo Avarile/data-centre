@@ -46,6 +46,10 @@ export const ChatConversation = ({ messages, isStreaming, isThinking }: IChatCon
         {messages.map((msg, i) => {
           const isLastAssistant = msg.role === 'assistant' && i === messages.length - 1;
           const showThinking = isLastAssistant && isThinking;
+          const hasReasoning = !!msg.reasoning;
+          const hasContent = !!msg.content;
+          // Reasoning is "live" until the answer starts streaming
+          const isReasoningStreaming = isLastAssistant && isStreaming && !hasContent;
 
           return (
             <Message key={i} from={msg.role}>
@@ -54,13 +58,13 @@ export const ChatConversation = ({ messages, isStreaming, isThinking }: IChatCon
                   msg.content
                 ) : (
                   <>
-                    {showThinking && (
-                      <Reasoning isStreaming={isThinking}>
+                    {(hasReasoning || showThinking) && (
+                      <Reasoning isStreaming={isReasoningStreaming || showThinking}>
                         <ReasoningTrigger />
-                        <ReasoningContent>{''}</ReasoningContent>
+                        <ReasoningContent>{msg.reasoning ?? ''}</ReasoningContent>
                       </Reasoning>
                     )}
-                    {msg.content && (
+                    {hasContent && (
                       <MessageResponse isAnimating={isLastAssistant && isStreaming}>
                         {msg.content}
                       </MessageResponse>

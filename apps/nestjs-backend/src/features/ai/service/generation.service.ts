@@ -94,18 +94,75 @@ export class GenerationService {
 
         const result = await runGeneralInfoAgent(modelInstance, input, baseId);
 
+        // Stream reasoning text as-is; replace the [ANSWER] marker with \x00 so the
+        // client can split the response into a collapsible reasoning section and the
+        // visible final answer.
+        const ANSWER_MARKER = '[ANSWER]\n';
+        let buffer = '';
+        let separatorEmitted = false;
         let totalText = 0;
+
         for await (const chunk of result.textStream) {
-          if (chunk) {
+          if (!chunk) continue;
+
+          if (separatorEmitted) {
             totalText += chunk.length;
             response.write(chunk);
+            continue;
+          }
+
+          buffer += chunk;
+          const markerIdx = buffer.indexOf(ANSWER_MARKER);
+
+          if (markerIdx !== -1) {
+            const reasoning = buffer.slice(0, markerIdx);
+            if (reasoning) response.write(reasoning);
+            response.write('\x00');
+            separatorEmitted = true;
+            const answer = buffer.slice(markerIdx + ANSWER_MARKER.length);
+            if (answer) {
+              totalText += answer.length;
+              response.write(answer);
+            }
+            buffer = '';
+          } else {
+            // Hold back enough to detect a partial marker; flush the safe prefix
+            const safeLength = Math.max(0, buffer.length - ANSWER_MARKER.length + 1);
+            if (safeLength > 0) {
+              response.write(buffer.slice(0, safeLength));
+              buffer = buffer.slice(safeLength);
+            }
           }
         }
+
+        // Flush any remaining buffer (marker never appeared → treat all as answer)
+        if (!separatorEmitted) {
+          response.write('\x00');
+        }
+        if (buffer) {
+          totalText += buffer.length;
+          response.write(buffer);
+        }
+
+        // The agent completed all tool calls but produced no text response.
         if (totalText === 0) {
-          response.write(
-            'I searched the database but could not find any records matching your query. ' +
-              'Please try rephrasing your question or provide more specific terms.'
+          this.logger.warn(
+            '[generateStream] Agent produced 0 text — falling back to direct streamText'
           );
+          const lastUserContent = messages?.length
+            ? messages.findLast((m) => m.role === 'user')?.content ?? prompt ?? ''
+            : prompt ?? '';
+          const fallbackResult = streamText({
+            model: modelInstance,
+            system:
+              'You are a helpful assistant for a data centre management system. ' +
+              'Answer the user based on what they asked. If you cannot look up live data, ' +
+              'tell them exactly what went wrong and what they should try instead.',
+            prompt: String(lastUserContent),
+          });
+          for await (const chunk of fallbackResult.textStream) {
+            if (chunk) response.write(chunk);
+          }
         }
       } else {
         let streamInput: Parameters<typeof streamText>[0];
