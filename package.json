@@ -76,6 +76,7 @@
     "npm-run-all2": "6.1.2",
     "openapi-typescript": "6.7.5",
     "prettier": "3.2.5",
+    "prettier-plugin-tailwindcss": "0.7.4",
     "rimraf": "5.0.5",
     "shell-quote": "1.8.1",
     "typescript": "5.4.3",
