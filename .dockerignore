@@ -43,6 +43,9 @@ tmp
 .idea
 .vscode
 
+# Static sites — deployed independently, not part of the Docker image
+apps/nextjs-statics
+
 # other
 **/db
 !packages/v2/adapter-repository-postgres/src/db
