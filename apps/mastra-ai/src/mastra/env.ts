@@ -35,8 +35,10 @@ const envSchema = z.object({
   // CORS
   MASTRA_CORS_ORIGIN: z.string().default('*'),
 
-  // // Backend logging integration — optional; enables BackendSpanExporter when set
+  // Backend logging integration — optional; enables BackendSpanExporter when set
   // BACKEND_URL: z.string().url().default('http://localhost:3000'),
+
+  PUBLIC_ORIGIN: z.url().default('http://localhost:3000'),
   // BACKEND_API_KEY: z.string().optional(),
 });
 

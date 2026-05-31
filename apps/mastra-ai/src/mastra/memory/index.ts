@@ -6,7 +6,7 @@ import { gateway } from '../provider';
 
 export const postgresStore = new PostgresStore({
   id: 'postgres-store',
-  connectionString: env.DATABASE_VECTOR_URL,
+  connectionString: env.VECTOR_DATABASE_URL,
   schemaName: 'store_schema',
   max: 20,
   idleTimeoutMillis: 60000,
@@ -14,7 +14,7 @@ export const postgresStore = new PostgresStore({
 
 export const postgresVector = new PgVector({
   id: 'postgres-vector',
-  connectionString: env.DATABASE_VECTOR_URL,
+  connectionString: env.VECTOR_DATABASE_URL,
   schemaName: 'vector_schema',
   max: 20,
   idleTimeoutMillis: 60000,
@@ -60,7 +60,7 @@ const knowledgeAgentSchema = z.object({
 export const knowledgeAgentMemory = new Memory({
   storage: postgresStore,
   vector: postgresVector,
-  embedder: gateway.textEmbeddingModel('openai/text-embedding-3-small'),
+  embedder: gateway.embeddingModel('openai/text-embedding-3-small'),
   options: {
     lastMessages: 30,
     semanticRecall: {
@@ -86,35 +86,35 @@ export const knowledgeAgentMemory = new Memory({
 
 // Initialize the knowledge_base vector index at startup.
 // Idempotent — skips creation when the index already exists.
-export async function initKnowledgeIndex(): Promise<void> {
-  const existing = await postgresVector.listIndexes();
-  if (!existing.includes('knowledge_base')) {
-    await postgresVector.createIndex({
-      indexName: 'knowledge_base',
-      dimension: 1536, // text-embedding-3-small
-      metric: 'cosine',
-    });
-  }
-}
+// export async function initKnowledgeIndex(): Promise<void> {
+//   const existing = await postgresVector.listIndexes();
+//   if (!existing.includes('knowledge_base')) {
+//     await postgresVector.createIndex({
+//       indexName: 'knowledge_base',
+//       dimension: 1536, // text-embedding-3-small
+//       metric: 'cosine',
+//     });
+//   }
+// }
 
-export async function initDealMasteryIndex(): Promise<void> {
-  const existing = await postgresVector.listIndexes();
-  if (!existing.includes('deal_mastery')) {
-    await postgresVector.createIndex({
-      indexName: 'deal_mastery',
-      dimension: 1536,
-      metric: 'cosine',
-    });
-  }
-}
+// export async function initDealMasteryIndex(): Promise<void> {
+//   const existing = await postgresVector.listIndexes();
+//   if (!existing.includes('deal_mastery')) {
+//     await postgresVector.createIndex({
+//       indexName: 'deal_mastery',
+//       dimension: 1536,
+//       metric: 'cosine',
+//     });
+//   }
+// }
 
-export async function initDDWorksheetIndex(): Promise<void> {
-  const existing = await postgresVector.listIndexes();
-  if (!existing.includes('dd_worksheet')) {
-    await postgresVector.createIndex({
-      indexName: 'dd_worksheet',
-      dimension: 1536,
-      metric: 'cosine',
-    });
-  }
-}
+// export async function initDDWorksheetIndex(): Promise<void> {
+//   const existing = await postgresVector.listIndexes();
+//   if (!existing.includes('dd_worksheet')) {
+//     await postgresVector.createIndex({
+//       indexName: 'dd_worksheet',
+//       dimension: 1536,
+//       metric: 'cosine',
+//     });
+//   }
+// }
