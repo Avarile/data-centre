@@ -40,6 +40,8 @@ const envSchema = z.object({
 
   PUBLIC_ORIGIN: z.url().default('http://localhost:3000'),
   // BACKEND_API_KEY: z.string().optional(),
+
+  CYBERNETICS_APP_TOKEN: z.string(),
 });
 
 const parsed = envSchema.safeParse(process.env);
