@@ -1,6 +1,7 @@
 import {
   teableList,
   teableGetById,
+  teableGetByIds,
   teableCreate,
   teableUpdate,
   teableDelete,
@@ -74,6 +75,21 @@ export function listProjects(params?: ListParams): Promise<{ records: ProjectRec
 
 export function getProjectById(recordId: string): Promise<ProjectRecord | null> {
   return teableGetById<ProjectFields>(TABLE_ID, recordId);
+}
+
+export async function searchProjectsByTitle(
+  keyword: string,
+  params?: Omit<ListParams, 'filter'>
+): Promise<{ records: ProjectRecord[] }> {
+  const filter = JSON.stringify({
+    conjunction: 'and',
+    filterSet: [{ fieldId: FIELD_IDS.title, operator: 'contains', value: keyword }],
+  });
+  return teableList<ProjectFields>(TABLE_ID, { ...params, filter });
+}
+
+export function getProjectsByIds(recordIds: string[]): Promise<ProjectRecord[]> {
+  return teableGetByIds<ProjectFields>(TABLE_ID, recordIds);
 }
 
 export async function getProjectByTitle(title: string): Promise<ProjectRecord | undefined> {

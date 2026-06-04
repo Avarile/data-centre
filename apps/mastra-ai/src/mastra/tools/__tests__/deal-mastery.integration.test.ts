@@ -8,7 +8,7 @@ import {
   industryMultipleLookupTool,
   ddChecklistSearchTool,
 } from '../deal-mastery-tools.js';
-import { knowledgeAgent } from '../../agents/knowledge-agent.js';
+import { knowledgeAgent } from '../../agents/knowledge-agent-rag.js';
 
 beforeAll(async () => {
   await runLookupMigrations();

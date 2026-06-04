@@ -2,7 +2,8 @@ import { Mastra } from '@mastra/core/mastra';
 import { registerApiRoute } from '@mastra/core/server';
 import { PinoLogger } from '@mastra/loggers';
 import { z } from 'zod';
-import { knowledgeAgent } from './agents/knowledge-agent';
+import { knowledgeRAGAgent } from './agents/knowledge-agent-rag';
+import { knowledgeNONRAGAgent } from './agents/knowledge-agent-non-rag';
 import { createJob, getJob, startJob } from './rag/ingest-jobs';
 import { runIndexMigrations, runJobMigrations } from './db/migrations';
 
@@ -19,7 +20,7 @@ const ingestBodySchema = z.object({
 
 export const mastra = new Mastra({
   workflows: {},
-  agents: { knowledgeAgent },
+  agents: { knowledgeRAGAgent, knowledgeNONRAGAgent },
   scorers: {},
   logger: new PinoLogger({
     name: 'Mastra',

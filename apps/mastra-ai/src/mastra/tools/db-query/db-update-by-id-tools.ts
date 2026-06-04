@@ -15,6 +15,9 @@ const mutationOutput = z.object({
 
 const recordIdField = z.string().describe('Teable record ID (e.g. recXXX)');
 
+type GR = { id: string; fields: Record<string, unknown> };
+const gr = (r: { id: string; fields: object }) => r as GR;
+
 // ── Knowledge ──────────────────────────────────────────────────────────────
 
 export const updateKnowledgeTool = createTool({
@@ -31,7 +34,7 @@ export const updateKnowledgeTool = createTool({
   execute: async ({ recordId, ...fields }) => {
     try {
       const result = await updateKnowledge(recordId, fields);
-      return { success: true, record: result.record };
+      return { success: true, record: gr(result.record) };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
@@ -53,7 +56,7 @@ export const updateKnowledgeTypeTool = createTool({
   execute: async ({ recordId, ...fields }) => {
     try {
       const result = await updateKnowledgeType(recordId, fields);
-      return { success: true, record: result.record };
+      return { success: true, record: gr(result.record) };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
@@ -76,7 +79,7 @@ export const updateGoalTool = createTool({
   execute: async ({ recordId, ...fields }) => {
     try {
       const result = await updateGoal(recordId, fields);
-      return { success: true, record: result.record };
+      return { success: true, record: gr(result.record) };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
@@ -87,7 +90,9 @@ export const updateGoalTool = createTool({
 
 export const updateProjectTool = createTool({
   id: 'update-project',
-  description: 'Update a project record by its Teable record ID.',
+  description:
+    'Update a project record by its Teable record ID. ' +
+    'Pass goalRecordId to reassign (move) this project to a different goal — replaces any existing goal link.',
   inputSchema: z.object({
     recordId: recordIdField,
     title: z.string().optional(),
@@ -107,12 +112,17 @@ export const updateProjectTool = createTool({
         'cancelled',
       ])
       .optional(),
+    goalRecordId: z
+      .string()
+      .optional()
+      .describe('Reassign this project to a different goal (replaces existing goal link)'),
   }),
   outputSchema: mutationOutput,
-  execute: async ({ recordId, ...fields }) => {
+  execute: async ({ recordId, goalRecordId, ...fields }) => {
     try {
-      const result = await updateProject(recordId, fields);
-      return { success: true, record: result.record };
+      const updateFields = goalRecordId ? { ...fields, belong_goals: [goalRecordId] } : fields;
+      const result = await updateProject(recordId, updateFields);
+      return { success: true, record: gr(result.record) };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
@@ -123,7 +133,9 @@ export const updateProjectTool = createTool({
 
 export const updateTaskTool = createTool({
   id: 'update-task',
-  description: 'Update a task record by its Teable record ID.',
+  description:
+    'Update a task record by its Teable record ID. ' +
+    'Pass projectRecordId to reassign (move) this task to a different project — replaces any existing project link.',
   inputSchema: z.object({
     recordId: recordIdField,
     title: z.string().optional(),
@@ -142,12 +154,19 @@ export const updateTaskTool = createTool({
     priority: z.enum(['urgent', 'important', 'prioritise', 'normal', 'can wait']).optional(),
     started_at: z.string().optional(),
     finished_at: z.string().optional(),
+    projectRecordId: z
+      .string()
+      .optional()
+      .describe('Reassign this task to a different project (replaces existing project link)'),
   }),
   outputSchema: mutationOutput,
-  execute: async ({ recordId, ...fields }) => {
+  execute: async ({ recordId, projectRecordId, ...fields }) => {
     try {
-      const result = await updateTask(recordId, fields);
-      return { success: true, record: result.record };
+      const updateFields = projectRecordId
+        ? { ...fields, belong_project: [projectRecordId] }
+        : fields;
+      const result = await updateTask(recordId, updateFields);
+      return { success: true, record: gr(result.record) };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }

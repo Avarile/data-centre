@@ -12,10 +12,14 @@ import type { FrameworkType } from './framework.js';
 const pagination = {
   take: z.number().int().min(1).max(200).optional().default(50),
   skip: z.number().int().min(0).optional(),
+  search: z.string().optional().describe('Text search against record fields (e.g. title keyword)'),
 };
 
 const recordSchema = z.object({ id: z.string(), fields: z.record(z.string(), z.unknown()) });
 const listOutput = z.object({ records: z.array(recordSchema), total: z.number() });
+
+type GR = { id: string; fields: Record<string, unknown> };
+const gr = (r: { id: string; fields: object }) => r as GR;
 
 // ── Knowledge ──────────────────────────────────────────────────────────────
 
@@ -29,11 +33,11 @@ export const listKnowledgesTool = createTool({
     typeName: z.string().optional().describe('Filter by knowledge type title'),
   }),
   outputSchema: listOutput,
-  execute: async ({ take, skip, typeName }) => {
+  execute: async ({ take, skip, search, typeName }) => {
     const result = typeName
-      ? await listKnowledgesByType(typeName, { take, skip })
-      : await listKnowledges({ take, skip });
-    return { records: result.records, total: result.records.length };
+      ? await listKnowledgesByType(typeName, { take, skip, search })
+      : await listKnowledges({ take, skip, search });
+    return { records: result.records.map(gr), total: result.records.length };
   },
 });
 
@@ -44,9 +48,9 @@ export const listKnowledgeTypesTool = createTool({
   description: 'List all knowledge type records (the taxonomy/categories for knowledge records).',
   inputSchema: z.object({ ...pagination }),
   outputSchema: listOutput,
-  execute: async ({ take, skip }) => {
-    const result = await listKnowledgeTypes({ take, skip });
-    return { records: result.records, total: result.records.length };
+  execute: async ({ take, skip, search }) => {
+    const result = await listKnowledgeTypes({ take, skip, search });
+    return { records: result.records.map(gr), total: result.records.length };
   },
 });
 
@@ -54,12 +58,12 @@ export const listKnowledgeTypesTool = createTool({
 
 export const listGoalsTool = createTool({
   id: 'list-goals',
-  description: 'List goal records.',
+  description: 'List goal records. Pass search to filter by title keyword.',
   inputSchema: z.object({ ...pagination }),
   outputSchema: listOutput,
-  execute: async ({ take, skip }) => {
-    const result = await listGoals({ take, skip });
-    return { records: result.records, total: result.records.length };
+  execute: async ({ take, skip, search }) => {
+    const result = await listGoals({ take, skip, search });
+    return { records: result.records.map(gr), total: result.records.length };
   },
 });
 
@@ -77,7 +81,7 @@ export const getGoalWithProjectsTool = createTool({
   execute: async ({ goalRecordId }) => {
     const result = await getGoalWithProjects(goalRecordId);
     if (!result) return { found: false };
-    return { found: true, goal: result.goal, projects: result.projects };
+    return { found: true, goal: gr(result.goal), projects: result.projects.map(gr) };
   },
 });
 
@@ -85,12 +89,12 @@ export const getGoalWithProjectsTool = createTool({
 
 export const listProjectsTool = createTool({
   id: 'list-projects',
-  description: 'List project records.',
+  description: 'List project records. Pass search to filter by title keyword.',
   inputSchema: z.object({ ...pagination }),
   outputSchema: listOutput,
-  execute: async ({ take, skip }) => {
-    const result = await listProjects({ take, skip });
-    return { records: result.records, total: result.records.length };
+  execute: async ({ take, skip, search }) => {
+    const result = await listProjects({ take, skip, search });
+    return { records: result.records.map(gr), total: result.records.length };
   },
 });
 
@@ -108,7 +112,7 @@ export const getProjectWithTasksTool = createTool({
   execute: async ({ projectRecordId }) => {
     const result = await getProjectWithTasks(projectRecordId);
     if (!result) return { found: false };
-    return { found: true, project: result.project, tasks: result.tasks };
+    return { found: true, project: gr(result.project), tasks: result.tasks.map(gr) };
   },
 });
 
@@ -116,12 +120,12 @@ export const getProjectWithTasksTool = createTool({
 
 export const listTasksTool = createTool({
   id: 'list-tasks',
-  description: 'List task records.',
+  description: 'List task records. Pass search to filter by title keyword.',
   inputSchema: z.object({ ...pagination }),
   outputSchema: listOutput,
-  execute: async ({ take, skip }) => {
-    const result = await listTasks({ take, skip });
-    return { records: result.records, total: result.records.length };
+  execute: async ({ take, skip, search }) => {
+    const result = await listTasks({ take, skip, search });
+    return { records: result.records.map(gr), total: result.records.length };
   },
 });
 
@@ -138,7 +142,7 @@ export const getTaskTool = createTool({
   execute: async ({ taskRecordId }) => {
     const task = await getTaskById(taskRecordId);
     if (!task) return { found: false };
-    return { found: true, task };
+    return { found: true, task: gr(task) };
   },
 });
 
@@ -157,10 +161,10 @@ export const listFrameworksTool = createTool({
       .describe('Framework category to filter by'),
   }),
   outputSchema: listOutput,
-  execute: async ({ take, skip, type }) => {
+  execute: async ({ take, skip, search, type }) => {
     const result = type
-      ? await listFrameworksByType(type as FrameworkType, { take, skip })
-      : await listFrameworks({ take, skip });
-    return { records: result.records, total: result.records.length };
+      ? await listFrameworksByType(type as FrameworkType, { take, skip, search })
+      : await listFrameworks({ take, skip, search });
+    return { records: result.records.map(gr), total: result.records.length };
   },
 });

@@ -1,7 +1,8 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import { ingestDocument } from '../rag/ingest';
-import { listIndexes } from '../db/db-vector.js';
+import { ingestDocument } from '../../rag/ingest';
+import { listIndexes } from '../../db/db-vector.js';
+import { createKnowledgeWithType } from '../db-query/knowledges/knowledge-service.js';
 
 // ─────────────────────────────────────────────
 // Tool: ingest-document
@@ -63,6 +64,76 @@ export const ingestDocumentTool = createTool({
         materialId: result.materialId,
         chunksIngested: result.chunksIngested,
         indexName: result.indexName,
+      };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+});
+
+// ─────────────────────────────────────────────
+// Tool: synthesize-and-ingest
+// Compound tool: stores agent-generated or user-provided content into
+// BOTH the vector index and the structured knowledge layer in one call.
+// ─────────────────────────────────────────────
+export const synthesizeAndIngestTool = createTool({
+  id: 'synthesize-and-ingest',
+  description:
+    'Persist content into both layers simultaneously: ' +
+    '(1) chunks and embeds it into a vector index for semantic search, and ' +
+    '(2) creates a structured knowledge record for browsing and filtering. ' +
+    'Use this when you have generated or received content that must be permanently stored. ' +
+    'Re-ingesting the same docName in the same index replaces existing vector content.',
+  inputSchema: z.object({
+    content: z
+      .string()
+      .min(1)
+      .describe('Full text to store — may be agent-generated or user-provided'),
+    indexName: z
+      .string()
+      .describe('Target vector index — must be active (use list-indexes to verify)'),
+    docName: z
+      .string()
+      .min(1)
+      .describe(
+        'Stable document identifier, e.g. "Q3 2024 Summary". ' +
+          'Re-ingesting the same docName replaces previous content.'
+      ),
+    title: z.string().min(1).describe('Human-readable title for the structured knowledge record'),
+    typeName: z
+      .string()
+      .describe('Knowledge type / category — created automatically if it does not exist'),
+    typeContext: z
+      .string()
+      .optional()
+      .describe('Description of the type, used only when the type needs to be created'),
+    metadata: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe(
+        'Extra metadata stored on every vector chunk, e.g. { source: "generated", author: "agent" }'
+      ),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    materialId: z.string().optional(),
+    chunksIngested: z.number().optional(),
+    knowledgeRecordId: z.string().optional(),
+    error: z.string().optional(),
+  }),
+  execute: async ({ content, indexName, docName, title, typeName, typeContext, metadata }) => {
+    try {
+      const ingestResult = await ingestDocument({ indexName, content, docName, metadata });
+      const { knowledge } = await createKnowledgeWithType(
+        { title, context: content.slice(0, 5000) },
+        typeName,
+        typeContext
+      );
+      return {
+        success: true,
+        materialId: ingestResult.materialId,
+        chunksIngested: ingestResult.chunksIngested,
+        knowledgeRecordId: knowledge.id,
       };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };

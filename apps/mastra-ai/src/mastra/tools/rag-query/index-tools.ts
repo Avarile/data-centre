@@ -7,7 +7,7 @@ import {
   updateIndex,
   deleteIndex,
   restoreIndex,
-} from '../db/db-vector.js';
+} from '../../db/db-vector.js';
 
 const indexSchema = z.object({
   id: z.number(),

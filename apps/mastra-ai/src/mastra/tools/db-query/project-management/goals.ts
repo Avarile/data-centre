@@ -1,6 +1,7 @@
 import {
   teableList,
   teableGetById,
+  teableGetByIds,
   teableCreate,
   teableUpdate,
   teableDelete,
@@ -43,6 +44,21 @@ export function listGoals(params?: ListParams): Promise<{ records: GoalRecord[] 
 
 export function getGoalById(recordId: string): Promise<GoalRecord | null> {
   return teableGetById<GoalFields>(TABLE_ID, recordId);
+}
+
+export async function searchGoalsByTitle(
+  keyword: string,
+  params?: Omit<ListParams, 'filter'>
+): Promise<{ records: GoalRecord[] }> {
+  const filter = JSON.stringify({
+    conjunction: 'and',
+    filterSet: [{ fieldId: FIELD_IDS.title, operator: 'contains', value: keyword }],
+  });
+  return teableList<GoalFields>(TABLE_ID, { ...params, filter });
+}
+
+export function getGoalsByIds(recordIds: string[]): Promise<GoalRecord[]> {
+  return teableGetByIds<GoalFields>(TABLE_ID, recordIds);
 }
 
 export async function getGoalByTitle(title: string): Promise<GoalRecord | undefined> {

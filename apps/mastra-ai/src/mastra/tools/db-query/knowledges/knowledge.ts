@@ -3,6 +3,7 @@ import {
   teableCreate,
   teableUpdate,
   teableDelete,
+  teableGetByIds,
   type TeableRecord,
   type ListParams,
 } from '../teable-client.js';
@@ -39,6 +40,21 @@ type UpdateInput = Partial<
 
 export function listKnowledges(params?: ListParams): Promise<{ records: KnowledgeRecord[] }> {
   return teableList<KnowledgeFields>(TABLE_ID, params);
+}
+
+export async function searchKnowledgesByTitle(
+  keyword: string,
+  params?: Omit<ListParams, 'filter'>
+): Promise<{ records: KnowledgeRecord[] }> {
+  const filter = JSON.stringify({
+    conjunction: 'and',
+    filterSet: [{ fieldId: FIELD_IDS.title, operator: 'contains', value: keyword }],
+  });
+  return teableList<KnowledgeFields>(TABLE_ID, { ...params, filter });
+}
+
+export function getKnowledgesByIds(recordIds: string[]): Promise<KnowledgeRecord[]> {
+  return teableGetByIds<KnowledgeFields>(TABLE_ID, recordIds);
 }
 
 export async function getKnowledgeByTitle(title: string): Promise<KnowledgeRecord | undefined> {

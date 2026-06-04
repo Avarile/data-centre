@@ -1,8 +1,8 @@
 import { createTool } from '@mastra/core/tools';
 import type { VectorFilter } from '@mastra/core/vector';
 import { z } from 'zod';
-import { listIndexes, getIndex } from '../db/db-vector.js';
-import { queryVectors, queryMultiIndex, type IndexName } from '../rag/vector-db';
+import { listIndexes, getIndex } from '../../db/db-vector.js';
+import { queryVectors, queryMultiIndex, type IndexName } from '../../rag/vector-db.js';
 
 // Converts a simple key-value filter map into a VectorFilter.
 // Array values become $in (any-of) checks; scalar values become equality checks.
@@ -144,7 +144,13 @@ export const allKnowledgeQueryTool = createTool({
       }
 
       if (targets.length === 0) {
-        return { results: [], totalFound: 0, indexesSearched: [] };
+        return {
+          results: [],
+          totalFound: 0,
+          indexesSearched: [],
+          error:
+            'No active indexes found. Create one with create-index then ingest content with synthesize-and-ingest or ingest-document.',
+        };
       }
 
       const hits = await queryMultiIndex(targets, query, { topK, minScore });
