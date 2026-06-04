@@ -4,6 +4,8 @@ import { searchKnowledgesByTitle, getKnowledgesByIds } from './knowledges/knowle
 import { searchGoalsByTitle, getGoalsByIds } from './project-management/goals.js';
 import { searchProjectsByTitle, getProjectsByIds } from './project-management/projects.js';
 import { searchTasksByTitle, getTasksByIds } from './project-management/tasks.js';
+import { searchContacts, getContactsByIds } from './contacts/contacts.js';
+import { searchCompanies } from './contacts/companies.js';
 
 // ── Shared output types ────────────────────────────────────────────────────
 
@@ -187,6 +189,86 @@ export const getTaskContextsTool = createTool({
       records: records.map((r) => ({
         id: r.id,
         title: String(r.fields.title ?? ''),
+        context: r.fields.context ? String(r.fields.context) : undefined,
+      })),
+    };
+  },
+});
+
+// ── Contacts — Round 1 ─────────────────────────────────────────────────────
+
+const contactTitleResult = titleResult.extend({ email: z.string().optional() });
+
+export const searchContactTitlesTool = createTool({
+  id: 'search-contact-titles',
+  description:
+    'ROUND 1 — Search contact records by name or email keyword. ' +
+    'Returns id, title, and email only. ' +
+    'Pick the ≤5 most relevant results, then call get-contact-contexts with those IDs.',
+  inputSchema: keywordInput,
+  outputSchema: z.object({ results: z.array(contactTitleResult), total: z.number() }),
+  execute: async ({ keyword, take }) => {
+    const result = await searchContacts(keyword, { take });
+    return {
+      results: result.records.map((r) => ({
+        id: r.id,
+        title: String(r.fields.title ?? ''),
+        email: r.fields.email ? String(r.fields.email) : undefined,
+      })),
+      total: result.records.length,
+    };
+  },
+});
+
+export const searchCompanyTitlesTool = createTool({
+  id: 'search-company-titles',
+  description:
+    'ROUND 1 — Search company records whose title contains the keyword. ' +
+    'Returns id and title only. ' +
+    'Pick the ≤5 most relevant results, then call get-company-contexts with those IDs.',
+  inputSchema: keywordInput,
+  outputSchema: z.object({ results: z.array(titleResult), total: z.number() }),
+  execute: async ({ keyword, take }) => {
+    const result = await searchCompanies(keyword, { take });
+    return {
+      results: result.records.map((r) => ({
+        id: r.id,
+        title: String(r.fields.title ?? ''),
+      })),
+      total: result.records.length,
+    };
+  },
+});
+
+// ── Contacts — Round 2 ─────────────────────────────────────────────────────
+
+const contactContextResult = z.object({
+  id: z.string(),
+  title: z.string(),
+  firstname: z.string().optional(),
+  lastname: z.string().optional(),
+  email: z.string().optional(),
+  mobile: z.string().optional(),
+  context: z.string().optional(),
+});
+
+export const getContactContextsTool = createTool({
+  id: 'get-contact-contexts',
+  description:
+    'ROUND 2 — Fetch full contact details for up to 5 contact records by their IDs. ' +
+    'Call this after search-contact-titles with the IDs of the most relevant results.',
+  inputSchema: idsInput,
+  outputSchema: z.object({ records: z.array(contactContextResult) }),
+  execute: async ({ recordIds }) => {
+    const records = await getContactsByIds(recordIds);
+    return {
+      records: records.map((r) => ({
+        id: r.id,
+        title: String(r.fields.title ?? ''),
+        firstname: r.fields.firstname ? String(r.fields.firstname) : undefined,
+        lastname: r.fields.lastname ? String(r.fields.lastname) : undefined,
+        email: r.fields.email ? String(r.fields.email) : undefined,
+        mobile: r.fields.mobile ? String(r.fields.mobile) : undefined,
         context: r.fields.context ? String(r.fields.context) : undefined,
       })),
     };

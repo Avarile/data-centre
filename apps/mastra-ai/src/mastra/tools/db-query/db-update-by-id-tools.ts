@@ -5,6 +5,10 @@ import { updateKnowledgeType } from './knowledges/knowledge-type.js';
 import { updateGoal } from './project-management/goals.js';
 import { updateProject } from './project-management/projects.js';
 import { updateTask } from './project-management/tasks.js';
+import { updateContactType } from './contacts/contact-type.js';
+import { updateContactProfession } from './contacts/contact-profession.js';
+import { updateCompany } from './contacts/companies.js';
+import { updateContact } from './contacts/contacts.js';
 
 const recordSchema = z.object({ id: z.string(), fields: z.record(z.string(), z.unknown()) });
 const mutationOutput = z.object({
@@ -166,6 +170,118 @@ export const updateTaskTool = createTool({
         ? { ...fields, belong_project: [projectRecordId] }
         : fields;
       const result = await updateTask(recordId, updateFields);
+      return { success: true, record: gr(result.record) };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+});
+
+// ── Contact Type ────────────────────────────────────────────────────────────
+
+export const updateContactTypeTool = createTool({
+  id: 'update-contact-type',
+  description: 'Update a contact type record by its Teable record ID.',
+  inputSchema: z.object({
+    recordId: recordIdField,
+    title: z.string().optional(),
+    context: z.string().optional(),
+    is_active: z.boolean().optional(),
+  }),
+  outputSchema: mutationOutput,
+  execute: async ({ recordId, ...fields }) => {
+    try {
+      const result = await updateContactType(recordId, fields);
+      return { success: true, record: gr(result.record) };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+});
+
+// ── Contact Profession ──────────────────────────────────────────────────────
+
+export const updateContactProfessionTool = createTool({
+  id: 'update-contact-profession',
+  description: 'Update a contact profession record by its Teable record ID.',
+  inputSchema: z.object({
+    recordId: recordIdField,
+    title: z.string().optional(),
+    context: z.string().optional(),
+    is_active: z.boolean().optional(),
+  }),
+  outputSchema: mutationOutput,
+  execute: async ({ recordId, ...fields }) => {
+    try {
+      const result = await updateContactProfession(recordId, fields);
+      return { success: true, record: gr(result.record) };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+});
+
+// ── Company ─────────────────────────────────────────────────────────────────
+
+export const updateCompanyTool = createTool({
+  id: 'update-company',
+  description: 'Update a company record by its Teable record ID.',
+  inputSchema: z.object({
+    recordId: recordIdField,
+    title: z.string().optional(),
+    context: z.string().optional(),
+    is_active: z.boolean().optional(),
+  }),
+  outputSchema: mutationOutput,
+  execute: async ({ recordId, ...fields }) => {
+    try {
+      const result = await updateCompany(recordId, fields);
+      return { success: true, record: gr(result.record) };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+});
+
+// ── Contact ─────────────────────────────────────────────────────────────────
+
+export const updateContactTool = createTool({
+  id: 'update-contact',
+  description:
+    'Update a contact record by its Teable record ID. ' +
+    'Pass typeRecordId, professionRecordId, or companyRecordId to reassign the linked records.',
+  inputSchema: z.object({
+    recordId: recordIdField,
+    title: z.string().optional(),
+    firstname: z.string().optional(),
+    lastname: z.string().optional(),
+    email: z.string().optional(),
+    mobile: z.string().optional(),
+    context: z.string().optional(),
+    is_active: z.boolean().optional(),
+    typeRecordId: z
+      .string()
+      .optional()
+      .describe('Teable record ID of the contact_type to link (replaces existing)'),
+    professionRecordId: z
+      .string()
+      .optional()
+      .describe('Teable record ID of the contact_profession to link (replaces existing)'),
+    companyRecordId: z
+      .string()
+      .optional()
+      .describe('Teable record ID of the company to link (replaces existing)'),
+  }),
+  outputSchema: mutationOutput,
+  execute: async ({ recordId, typeRecordId, professionRecordId, companyRecordId, ...fields }) => {
+    try {
+      const updateFields = {
+        ...fields,
+        ...(typeRecordId ? { contact_type: [{ id: typeRecordId }] } : {}),
+        ...(professionRecordId ? { contact_profession: [{ id: professionRecordId }] } : {}),
+        ...(companyRecordId ? { contact_company: [{ id: companyRecordId }] } : {}),
+      };
+      const result = await updateContact(recordId, updateFields);
       return { success: true, record: gr(result.record) };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };

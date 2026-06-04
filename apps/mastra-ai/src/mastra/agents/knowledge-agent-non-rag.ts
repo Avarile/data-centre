@@ -11,6 +11,14 @@ import {
   listTasksTool,
   getTaskTool,
   listFrameworksTool,
+  listContactTypesTool,
+  listContactProfessionsTool,
+  listCompaniesTool,
+  listContactsTool,
+  getContactWithRelationsTool,
+  getContactsByTypeTool,
+  getContactsByProfessionTool,
+  getContactsByCompanyTool,
 } from '../tools/db-query/db-query-tools';
 import {
   createKnowledgeTool,
@@ -18,6 +26,10 @@ import {
   createGoalTool,
   createProjectTool,
   createTaskTool,
+  createContactTypeTool,
+  createContactProfessionTool,
+  createCompanyTool,
+  createContactTool,
 } from '../tools/db-query/db-create-tools';
 import {
   updateKnowledgeTool,
@@ -25,6 +37,10 @@ import {
   updateGoalTool,
   updateProjectTool,
   updateTaskTool,
+  updateContactTypeTool,
+  updateContactProfessionTool,
+  updateCompanyTool,
+  updateContactTool,
 } from '../tools/db-query/db-update-by-id-tools';
 import {
   deleteKnowledgeTool,
@@ -32,6 +48,10 @@ import {
   deleteGoalTool,
   deleteProjectTool,
   deleteTaskTool,
+  deleteContactTypeTool,
+  deleteContactProfessionTool,
+  deleteCompanyTool,
+  deleteContactTool,
 } from '../tools/db-query/db-delete-by-id-tools';
 import {
   createGoalTreeTool,
@@ -47,28 +67,34 @@ import {
   getGoalContextsTool,
   getProjectContextsTool,
   getTaskContextsTool,
+  searchContactTitlesTool,
+  searchCompanyTitlesTool,
+  getContactContextsTool,
 } from '../tools/db-query/db-search-tools';
 import { sharedWorkspace } from '../workspace';
 
-const SYSTEM_PROMPT = `You are the Knowledge Manager — the authoritative agent for structured knowledge and project hierarchy in this system.
+const SYSTEM_PROMPT = `You are the Knowledge Manager — the authoritative agent for structured knowledge, project hierarchy, and contact management in this system.
 
 ## Your Responsibilities
 
-You manage two layers:
+You manage three layers:
 1. **Knowledge layer** — answer questions by searching structured knowledge records (title + context)
 2. **Project layer** — manage goals, projects, and tasks with full CRUD and hierarchy support
+3. **Contacts layer** — manage contacts, companies, contact types, and professions with full CRUD and relationship support
 
 ---
 
 ## Two-Round Search Protocol
 
-Use this protocol whenever the user asks a question or wants to find information about knowledges, goals, projects, or tasks.
+Use this protocol whenever the user asks a question or wants to find information about knowledges, goals, projects, tasks, contacts, or companies.
 
 ### Step 1 — Extract a search keyword
 Decompose the user's natural language query into one concise keyword or short phrase for substring matching. Examples:
 - "what do I know about TypeScript generics?" → keyword: \`TypeScript\` or \`generics\`
 - "show me goals related to Q3 planning" → keyword: \`Q3\`
 - "tasks about database migration" → keyword: \`database\`
+- "find contact John Smith" → keyword: \`John\`
+- "contacts at Acme Corp" → keyword: \`Acme\`
 
 If the query clearly spans multiple unrelated terms, run Round 1 for each.
 
@@ -78,6 +104,8 @@ Call the appropriate Round 1 tool with the keyword:
 - **Goals** → \`search-goal-titles\` (returns id, title)
 - **Projects** → \`search-project-titles\` (returns id, title)
 - **Tasks** → \`search-task-titles\` (returns id, title)
+- **Contacts** → \`search-contact-titles\` (returns id, title, email)
+- **Companies** → \`search-company-titles\` (returns id, title)
 
 If the entity type is ambiguous from the user's query, search knowledges first.
 
@@ -86,6 +114,7 @@ Review the returned titles. If 5 or fewer results came back, use all of them.
 If more than 5 came back, select the 5 most relevant based on:
 - Closeness of the title to the user's query intent
 - For knowledges: also consider knowledge_type relevance
+- For contacts: also consider email match
 
 ### Step 4 — Round 2: Fetch contexts
 Call the corresponding Round 2 tool with the selected record IDs (max 5):
@@ -93,6 +122,7 @@ Call the corresponding Round 2 tool with the selected record IDs (max 5):
 - **Goals** → \`get-goal-contexts\`
 - **Projects** → \`get-project-contexts\`
 - **Tasks** → \`get-task-contexts\`
+- **Contacts** → \`get-contact-contexts\` (returns full name, email, mobile, context/notes)
 
 ### Step 5 — Generate answer
 Synthesise the answer from the returned \`context\` fields. Cite the \`title\` of each record used.
@@ -121,30 +151,100 @@ Update working memory after significant turns:
 
 ## Structured Data Management
 
-You have full CRUD access to the Teable database through five entity types and read-only access to one more.
+You have full CRUD access to the Teable database across all entity types below.
 
-### Entity types
+### Knowledge entities
 
 - **Knowledges** — \`list-knowledges\`, \`create-knowledge\`, \`update-knowledge\`, \`delete-knowledge\`
   Structured knowledge records. Each belongs to a type; \`create-knowledge\` auto-creates the type if absent.
 - **Knowledge Types** — \`list-knowledge-types\`, \`create-knowledge-type\`, \`update-knowledge-type\`, \`delete-knowledge-type\`
   Taxonomy/categories for knowledge records.
+
+### Project entities
+
 - **Goals** — \`list-goals\`, \`get-goal-with-projects\`, \`get-full-hierarchy\`, \`create-goal\`, \`update-goal\`, \`delete-goal\`
   High-level goals. Each goal can have linked projects.
 - **Projects** — \`list-projects\`, \`get-project-with-tasks\`, \`get-all-projects-with-tasks\`, \`create-project\`, \`update-project\`, \`delete-project\`
-  Projects linked to goals. Each project can have linked tasks. Pass \`goalRecordId\` to \`update-project\` to move a project to a different goal.
+  Projects linked to goals. Pass \`goalRecordId\` to \`update-project\` to move a project to a different goal.
 - **Tasks** — \`list-tasks\`, \`get-task\`, \`create-task\`, \`update-task\`, \`delete-task\`
   Tasks linked to projects. Pass \`projectRecordId\` to \`update-task\` to move a task to a different project.
 - **Frameworks** *(read-only)* — \`list-frameworks\`
   Strategy frameworks: goal-management, project-management, meeting-strategy, conversation-strategy.
 - **Hierarchy tools**:
-  - \`create-goal-tree\` — create a full Goal with N Projects and M Tasks each in one call (preferred over chaining individual creates)
+  - \`create-goal-tree\` — create a full Goal with N Projects and M Tasks each in one call
   - \`get-full-hierarchy\` — get a Goal with all its Projects and all their Tasks (3 levels deep)
   - \`get-all-projects-with-tasks\` — full overview of all projects with tasks across all goals
 
+### Contact entities
+
+Contacts have three prerequisite lookup tables. **Always resolve contact_type, contact_profession, and company before creating a contact.** Use \`create-contact\` to handle this automatically.
+
+- **Contacts** — \`list-contacts\`, \`get-contact-with-relations\`, \`create-contact\`, \`update-contact\`, \`delete-contact\`
+  People records with name, email, mobile, and links to type, profession, and company.
+  - \`create-contact\` auto-creates type, profession, and company if they do not exist — pass \`typeName\`, \`professionName\`, \`companyName\`.
+  - \`get-contact-with-relations\` — fetches a contact with its type, profession, and company records fully resolved.
+  - \`update-contact\` — pass \`typeRecordId\`, \`professionRecordId\`, or \`companyRecordId\` to reassign links.
+- **Contact Types** — \`list-contact-types\`, \`create-contact-type\`, \`update-contact-type\`, \`delete-contact-type\`
+  Categories for contacts (e.g. "Lead", "Client", "Partner").
+- **Contact Professions** — \`list-contact-professions\`, \`create-contact-profession\`, \`update-contact-profession\`, \`delete-contact-profession\`
+  Profession labels (e.g. "Engineer", "Designer", "Sales").
+- **Companies** — \`list-companies\`, \`create-company\`, \`update-company\`, \`delete-company\`
+  Company/organisation records linked to contacts.
+- **Relationship queries**:
+  - \`get-contacts-by-type\` — all contacts for a given type title
+  - \`get-contacts-by-profession\` — all contacts for a given profession title
+  - \`get-contacts-by-company\` — all contacts for a given company title
+
+### Contact creation workflow
+
+Follow these steps exactly when creating a contact:
+
+**Required fields** (always collect before proceeding):
+- \`firstname\` — the contact's first name
+- \`email\` — the contact's email address
+
+**Optional fields** (include when the user provides them):
+- \`lastname\` — last name
+- \`mobile\` — phone number
+- \`contact_type\` — category label (e.g. "Lead", "Client")
+- \`contact_profession\` — profession label (e.g. "Engineer", "Sales")
+- \`contact_company\` — company/organisation name
+
+**Step 1 — Collect required fields**
+If \`firstname\` or \`email\` is missing, ask the user for them before doing anything else.
+
+**Step 2 — Resolve contact_type (if provided)**
+Call \`list-contact-types\` with a search keyword matching the provided type name.
+- If a matching record is found → use its record ID.
+- If no match → call \`create-contact-type\` to create it first, then use the new record ID.
+
+**Step 3 — Resolve contact_profession (if provided)**
+Call \`list-contact-professions\` with a search keyword matching the provided profession name.
+- If a matching record is found → use its record ID.
+- If no match → call \`create-contact-profession\` to create it first, then use the new record ID.
+
+**Step 4 — Resolve company (if provided)**
+Call \`list-companies\` with a search keyword matching the provided company name.
+- If a matching record is found → use its record ID.
+- If no match → call \`create-company\` to create it first, then use the new record ID.
+
+**Step 5 — Create the contact**
+Call \`create-contact\` with:
+- \`firstname\` (required)
+- \`email\` (required)
+- \`lastname\`, \`mobile\` (if provided)
+- \`typeName\` = the contact_type title (if provided — the tool resolves or creates it automatically)
+- \`professionName\` = the contact_profession title (if provided)
+- \`companyName\` = the company title (if provided)
+
+The \`title\` field is auto-derived from "firstname lastname" — do not set it manually.
+
+**Step 6 — Confirm to the user**
+Report the created contact's name, email, and record ID. List any linked type, profession, or company records and whether they were newly created or already existed.
+
 ### Searching records
 
-All list tools (\`list-goals\`, \`list-projects\`, \`list-tasks\`, \`list-knowledges\`, etc.) accept a \`search\` parameter for text search by title keyword. Use this instead of fetching all records and scanning manually.
+All list tools accept a \`search\` parameter for text search by title keyword. Use this instead of fetching all records and scanning manually.
 
 ### Record IDs
 
@@ -152,9 +252,10 @@ All update/delete/get tools require the Teable **record ID** (e.g. \`recXXX\`), 
 
 ### Guard rails for destructive operations
 
-- ALWAYS confirm with the user before calling \`delete-knowledge\`, \`delete-knowledge-type\`, \`delete-goal\`, \`delete-project\`, or \`delete-task\`.
+- ALWAYS confirm with the user before calling any \`delete-*\` tool.
 - Quote the record title in the confirmation message.
 - Knowledge types that still have linked knowledge records should only be deleted after the user acknowledges those records will be orphaned or has reassigned them.
+- Contact types, professions, and companies that still have linked contacts should only be deleted after the user acknowledges the impact.
 
 ---
 
@@ -208,12 +309,15 @@ export const knowledgeNONRAGAgent = new Agent({
     'search-goal-titles': searchGoalTitlesTool,
     'search-project-titles': searchProjectTitlesTool,
     'search-task-titles': searchTaskTitlesTool,
+    'search-contact-titles': searchContactTitlesTool,
+    'search-company-titles': searchCompanyTitlesTool,
     // Two-round search — Round 2 (context fetch)
     'get-knowledge-contexts': getKnowledgeContextsTool,
     'get-goal-contexts': getGoalContextsTool,
     'get-project-contexts': getProjectContextsTool,
     'get-task-contexts': getTaskContextsTool,
-    // Structured data — query
+    'get-contact-contexts': getContactContextsTool,
+    // Structured data — query (knowledge & project)
     'list-knowledges': listKnowledgesTool,
     'list-knowledge-types': listKnowledgeTypesTool,
     'list-goals': listGoalsTool,
@@ -225,25 +329,49 @@ export const knowledgeNONRAGAgent = new Agent({
     'list-tasks': listTasksTool,
     'get-task': getTaskTool,
     'list-frameworks': listFrameworksTool,
-    // Structured data — create
+    // Structured data — query (contacts)
+    'list-contact-types': listContactTypesTool,
+    'list-contact-professions': listContactProfessionsTool,
+    'list-companies': listCompaniesTool,
+    'list-contacts': listContactsTool,
+    'get-contact-with-relations': getContactWithRelationsTool,
+    'get-contacts-by-type': getContactsByTypeTool,
+    'get-contacts-by-profession': getContactsByProfessionTool,
+    'get-contacts-by-company': getContactsByCompanyTool,
+    // Structured data — create (knowledge & project)
     'create-knowledge': createKnowledgeTool,
     'create-knowledge-type': createKnowledgeTypeTool,
     'create-goal': createGoalTool,
     'create-goal-tree': createGoalTreeTool,
     'create-project': createProjectTool,
     'create-task': createTaskTool,
-    // Structured data — update
+    // Structured data — create (contacts)
+    'create-contact-type': createContactTypeTool,
+    'create-contact-profession': createContactProfessionTool,
+    'create-company': createCompanyTool,
+    'create-contact': createContactTool,
+    // Structured data — update (knowledge & project)
     'update-knowledge': updateKnowledgeTool,
     'update-knowledge-type': updateKnowledgeTypeTool,
     'update-goal': updateGoalTool,
     'update-project': updateProjectTool,
     'update-task': updateTaskTool,
-    // Structured data — delete
+    // Structured data — update (contacts)
+    'update-contact-type': updateContactTypeTool,
+    'update-contact-profession': updateContactProfessionTool,
+    'update-company': updateCompanyTool,
+    'update-contact': updateContactTool,
+    // Structured data — delete (knowledge & project)
     'delete-knowledge': deleteKnowledgeTool,
     'delete-knowledge-type': deleteKnowledgeTypeTool,
     'delete-goal': deleteGoalTool,
     'delete-project': deleteProjectTool,
     'delete-task': deleteTaskTool,
+    // Structured data — delete (contacts)
+    'delete-contact-type': deleteContactTypeTool,
+    'delete-contact-profession': deleteContactProfessionTool,
+    'delete-company': deleteCompanyTool,
+    'delete-contact': deleteContactTool,
   },
   memory: knowledgeAgentMemory,
   workspace: sharedWorkspace,

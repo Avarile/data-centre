@@ -5,6 +5,10 @@ import { deleteKnowledgeType } from './knowledges/knowledge-type.js';
 import { deleteGoal } from './project-management/goals.js';
 import { deleteProject } from './project-management/projects.js';
 import { deleteTask } from './project-management/tasks.js';
+import { deleteContactType } from './contacts/contact-type.js';
+import { deleteContactProfession } from './contacts/contact-profession.js';
+import { deleteCompany } from './contacts/companies.js';
+import { deleteContact } from './contacts/contacts.js';
 
 const deleteOutput = z.object({
   success: z.boolean(),
@@ -83,6 +87,66 @@ export const deleteTaskTool = createTool({
   execute: async ({ recordId }) => {
     try {
       await deleteTask(recordId);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+});
+
+export const deleteContactTypeTool = createTool({
+  id: 'delete-contact-type',
+  description: 'Permanently delete a contact type record by its Teable record ID.',
+  inputSchema: recordIdInput,
+  outputSchema: deleteOutput,
+  execute: async ({ recordId }) => {
+    try {
+      await deleteContactType(recordId);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+});
+
+export const deleteContactProfessionTool = createTool({
+  id: 'delete-contact-profession',
+  description: 'Permanently delete a contact profession record by its Teable record ID.',
+  inputSchema: recordIdInput,
+  outputSchema: deleteOutput,
+  execute: async ({ recordId }) => {
+    try {
+      await deleteContactProfession(recordId);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+});
+
+export const deleteCompanyTool = createTool({
+  id: 'delete-company',
+  description: 'Permanently delete a company record by its Teable record ID.',
+  inputSchema: recordIdInput,
+  outputSchema: deleteOutput,
+  execute: async ({ recordId }) => {
+    try {
+      await deleteCompany(recordId);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+});
+
+export const deleteContactTool = createTool({
+  id: 'delete-contact',
+  description: 'Permanently delete a contact record by its Teable record ID.',
+  inputSchema: recordIdInput,
+  outputSchema: deleteOutput,
+  execute: async ({ recordId }) => {
+    try {
+      await deleteContact(recordId);
       return { success: true };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };

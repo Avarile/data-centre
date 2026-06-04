@@ -8,6 +8,16 @@ import { listTasks, getTaskById } from './project-management/tasks.js';
 import { getGoalWithProjects, getProjectWithTasks } from './project-management/project-service.js';
 import { listFrameworks, listFrameworksByType } from './framework.js';
 import type { FrameworkType } from './framework.js';
+import { listContactTypes } from './contacts/contact-type.js';
+import { listContactProfessions } from './contacts/contact-profession.js';
+import { listCompanies } from './contacts/companies.js';
+import { listContacts } from './contacts/contacts.js';
+import {
+  getContactWithRelations,
+  getContactsByType,
+  getContactsByProfession,
+  getContactsByCompany,
+} from './contacts/contact-service.js';
 
 const pagination = {
   take: z.number().int().min(1).max(200).optional().default(50),
@@ -166,5 +176,123 @@ export const listFrameworksTool = createTool({
       ? await listFrameworksByType(type as FrameworkType, { take, skip, search })
       : await listFrameworks({ take, skip, search });
     return { records: result.records.map(gr), total: result.records.length };
+  },
+});
+
+// ── Contact Types ──────────────────────────────────────────────────────────
+
+export const listContactTypesTool = createTool({
+  id: 'list-contact-types',
+  description: 'List all contact type records.',
+  inputSchema: z.object({ ...pagination }),
+  outputSchema: listOutput,
+  execute: async ({ take, skip, search }) => {
+    const result = await listContactTypes({ take, skip, search });
+    return { records: result.records.map(gr), total: result.records.length };
+  },
+});
+
+// ── Contact Professions ────────────────────────────────────────────────────
+
+export const listContactProfessionsTool = createTool({
+  id: 'list-contact-professions',
+  description: 'List all contact profession records.',
+  inputSchema: z.object({ ...pagination }),
+  outputSchema: listOutput,
+  execute: async ({ take, skip, search }) => {
+    const result = await listContactProfessions({ take, skip, search });
+    return { records: result.records.map(gr), total: result.records.length };
+  },
+});
+
+// ── Companies ──────────────────────────────────────────────────────────────
+
+export const listCompaniesTool = createTool({
+  id: 'list-companies',
+  description: 'List company records. Pass search to filter by title keyword.',
+  inputSchema: z.object({ ...pagination }),
+  outputSchema: listOutput,
+  execute: async ({ take, skip, search }) => {
+    const result = await listCompanies({ take, skip, search });
+    return { records: result.records.map(gr), total: result.records.length };
+  },
+});
+
+// ── Contacts ───────────────────────────────────────────────────────────────
+
+export const listContactsTool = createTool({
+  id: 'list-contacts',
+  description: 'List contact records. Pass search to filter by title keyword.',
+  inputSchema: z.object({ ...pagination }),
+  outputSchema: listOutput,
+  execute: async ({ take, skip, search }) => {
+    const result = await listContacts({ take, skip, search });
+    return { records: result.records.map(gr), total: result.records.length };
+  },
+});
+
+export const getContactWithRelationsTool = createTool({
+  id: 'get-contact-with-relations',
+  description:
+    'Get a contact by its Teable record ID with linked type, profession, and company records fully resolved.',
+  inputSchema: z.object({
+    contactRecordId: z.string().describe('Teable record ID of the contact (e.g. recXXX)'),
+  }),
+  outputSchema: z.object({
+    found: z.boolean(),
+    contact: recordSchema.optional(),
+    type: recordSchema.optional(),
+    profession: recordSchema.optional(),
+    company: recordSchema.optional(),
+  }),
+  execute: async ({ contactRecordId }) => {
+    const result = await getContactWithRelations(contactRecordId);
+    if (!result) return { found: false };
+    return {
+      found: true,
+      contact: gr(result.contact),
+      type: result.type ? gr(result.type) : undefined,
+      profession: result.profession ? gr(result.profession) : undefined,
+      company: result.company ? gr(result.company) : undefined,
+    };
+  },
+});
+
+export const getContactsByTypeTool = createTool({
+  id: 'get-contacts-by-type',
+  description: 'Get all contacts linked to a given contact type title.',
+  inputSchema: z.object({
+    typeName: z.string().describe('Contact type title (e.g. "Lead")'),
+  }),
+  outputSchema: listOutput,
+  execute: async ({ typeName }) => {
+    const records = await getContactsByType(typeName);
+    return { records: records.map(gr), total: records.length };
+  },
+});
+
+export const getContactsByProfessionTool = createTool({
+  id: 'get-contacts-by-profession',
+  description: 'Get all contacts linked to a given contact profession title.',
+  inputSchema: z.object({
+    professionName: z.string().describe('Contact profession title (e.g. "Engineer")'),
+  }),
+  outputSchema: listOutput,
+  execute: async ({ professionName }) => {
+    const records = await getContactsByProfession(professionName);
+    return { records: records.map(gr), total: records.length };
+  },
+});
+
+export const getContactsByCompanyTool = createTool({
+  id: 'get-contacts-by-company',
+  description: 'Get all contacts linked to a given company title.',
+  inputSchema: z.object({
+    companyName: z.string().describe('Company title'),
+  }),
+  outputSchema: listOutput,
+  execute: async ({ companyName }) => {
+    const records = await getContactsByCompany(companyName);
+    return { records: records.map(gr), total: records.length };
   },
 });

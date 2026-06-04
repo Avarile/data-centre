@@ -9,6 +9,10 @@ import {
   createProjectUnderGoal,
   createTaskUnderProject,
 } from './project-management/project-service.js';
+import { createContactType } from './contacts/contact-type.js';
+import { createContactProfession } from './contacts/contact-profession.js';
+import { createCompany } from './contacts/companies.js';
+import { createContactWithDependencies } from './contacts/contact-service.js';
 
 const recordSchema = z.object({ id: z.string(), fields: z.record(z.string(), z.unknown()) });
 const mutationOutput = z.object({
@@ -16,6 +20,16 @@ const mutationOutput = z.object({
   record: recordSchema.optional(),
   error: z.string().optional(),
 });
+
+// TeableRecord<T> has `fields: T` where T is a concrete interface without an index signature,
+// making it not directly assignable to `Record<string, unknown>`. This cast is safe because
+// all T values are plain objects whose keys are strings.
+function toMutationRecord(r: { id: string; fields: unknown }): {
+  id: string;
+  fields: Record<string, unknown>;
+} {
+  return r as { id: string; fields: Record<string, unknown> };
+}
 
 // ── Knowledge ──────────────────────────────────────────────────────────────
 
@@ -38,7 +52,7 @@ export const createKnowledgeTool = createTool({
         typeName,
         typeContext
       );
-      return { success: true, record: knowledge };
+      return { success: true, record: toMutationRecord(knowledge) };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
@@ -59,7 +73,7 @@ export const createKnowledgeTypeTool = createTool({
   execute: async ({ title, context, is_active }) => {
     try {
       const record = await createKnowledgeType({ title, context, is_active });
-      return { success: true, record };
+      return { success: true, record: toMutationRecord(record) };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
@@ -81,7 +95,7 @@ export const createGoalTool = createTool({
   execute: async ({ title, context, is_active, deadline }) => {
     try {
       const record = await createGoal({ title, context, is_active, deadline });
-      return { success: true, record };
+      return { success: true, record: toMutationRecord(record) };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
@@ -123,7 +137,7 @@ export const createProjectTool = createTool({
         ? (await createProjectUnderGoal({ title, context, is_active, progress }, goalRecordId))
             .project
         : await createProject({ title, context, is_active, progress });
-      return { success: true, record };
+      return { success: true, record: toMutationRecord(record) };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
@@ -174,7 +188,139 @@ export const createTaskTool = createTool({
       const record = projectRecordId
         ? (await createTaskUnderProject(taskFields, projectRecordId)).task
         : await createTask(taskFields);
-      return { success: true, record };
+      return { success: true, record: toMutationRecord(record) };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+});
+
+// ── Contact Type ────────────────────────────────────────────────────────────
+
+export const createContactTypeTool = createTool({
+  id: 'create-contact-type',
+  description: 'Create a new contact type record (e.g. "Lead", "Client", "Partner").',
+  inputSchema: z.object({
+    title: z.string().min(1),
+    context: z.string().optional(),
+    is_active: z.boolean().optional().default(true),
+  }),
+  outputSchema: mutationOutput,
+  execute: async ({ title, context, is_active }) => {
+    try {
+      const record = await createContactType({ title, context, is_active });
+      return { success: true, record: toMutationRecord(record) };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+});
+
+// ── Contact Profession ──────────────────────────────────────────────────────
+
+export const createContactProfessionTool = createTool({
+  id: 'create-contact-profession',
+  description: 'Create a new contact profession record (e.g. "Engineer", "Designer", "Sales").',
+  inputSchema: z.object({
+    title: z.string().min(1),
+    context: z.string().optional(),
+    is_active: z.boolean().optional().default(true),
+  }),
+  outputSchema: mutationOutput,
+  execute: async ({ title, context, is_active }) => {
+    try {
+      const record = await createContactProfession({ title, context, is_active });
+      return { success: true, record: toMutationRecord(record) };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+});
+
+// ── Company ─────────────────────────────────────────────────────────────────
+
+export const createCompanyTool = createTool({
+  id: 'create-company',
+  description: 'Create a new company record.',
+  inputSchema: z.object({
+    title: z.string().min(1),
+    context: z.string().optional(),
+    is_active: z.boolean().optional().default(true),
+  }),
+  outputSchema: mutationOutput,
+  execute: async ({ title, context, is_active }) => {
+    try {
+      const record = await createCompany({ title, context, is_active });
+      return { success: true, record: toMutationRecord(record) };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+});
+
+// ── Contact ─────────────────────────────────────────────────────────────────
+
+export const createContactTool = createTool({
+  id: 'create-contact',
+  description:
+    'Create a new contact. ' +
+    'title is the display name and is auto-derived from "firstname lastname" when omitted — ' +
+    'so you only need to provide firstname and/or lastname. ' +
+    'contact_type, contact_profession, and company are auto-created ' +
+    'if they do not yet exist — pass typeName, professionName, and/or companyName to link them.',
+  inputSchema: z.object({
+    title: z
+      .string()
+      .optional()
+      .describe('Display name — auto-set to "firstname lastname" if omitted'),
+    firstname: z.string().optional(),
+    lastname: z.string().optional(),
+    email: z.string().optional(),
+    mobile: z.string().optional(),
+    context: z.string().optional(),
+    is_active: z.boolean().optional().default(true),
+    typeName: z
+      .string()
+      .optional()
+      .describe('Contact type title — created automatically if absent'),
+    typeContext: z.string().optional(),
+    professionName: z
+      .string()
+      .optional()
+      .describe('Contact profession title — created automatically if absent'),
+    professionContext: z.string().optional(),
+    companyName: z.string().optional().describe('Company title — created automatically if absent'),
+    companyContext: z.string().optional(),
+  }),
+  outputSchema: mutationOutput,
+  execute: async ({
+    title,
+    firstname,
+    lastname,
+    email,
+    mobile,
+    context,
+    is_active,
+    typeName,
+    typeContext,
+    professionName,
+    professionContext,
+    companyName,
+    companyContext,
+  }) => {
+    try {
+      const resolvedTitle = title?.trim() || [firstname, lastname].filter(Boolean).join(' ').trim();
+      if (!resolvedTitle) {
+        return {
+          success: false,
+          error: 'At least one of title, firstname, or lastname is required.',
+        };
+      }
+      const { contact } = await createContactWithDependencies(
+        { title: resolvedTitle, firstname, lastname, email, mobile, context, is_active },
+        { typeName, typeContext, professionName, professionContext, companyName, companyContext }
+      );
+      return { success: true, record: toMutationRecord(contact) };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
