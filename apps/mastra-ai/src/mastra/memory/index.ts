@@ -79,7 +79,7 @@ export const knowledgeAgentMemory = new Memory({
     },
     generateTitle: {
       model: gateway('anthropic/claude-haiku-4.5'),
-      instructions: `Generate a concise title (3-5 words) that captures the main topic of the following conversation snippet. Focus on key themes or subjects mentioned. Do not include any emojis or special characters in the title.`,
+      instructions: `Generate a concise title (3-5 words) that captures the main topic of the following conversation snippet. Focus on key themes or subjects mentioned. Do not include any emojis or special characters in the title. This title should not exceed more than 5 words`,
     },
   },
 });

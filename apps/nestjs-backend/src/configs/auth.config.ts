@@ -30,7 +30,9 @@ export const authConfig = registerAs('auth', () => ({
     },
   },
   accessToken: {
-    prefix: 'teable',
+    // this is the original prefix
+    // prefix: 'teable',
+    prefix: 'cybernetics',
     encryption: {
       algorithm: process.env.BACKEND_ACCESS_TOKEN_ENCRYPTION_ALGORITHM ?? 'aes-128-cbc',
       key: process.env.BACKEND_ACCESS_TOKEN_ENCRYPTION_KEY ?? 'ie21hOKjlXUiGDx9',
