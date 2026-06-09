@@ -10,6 +10,7 @@ import type { AgentInput } from '../agents/general-agents';
 import { runIngestionAgent } from '../agents/ingestion-agent';
 import { getTaskModelKey } from '../util';
 import { AiConfigService } from './ai-config.service';
+import { MastraClientService } from './mastra-client.service';
 import { ModelCapabilityService } from './model-capability.service';
 import { ModelResolverService } from './model-resolver.service';
 
@@ -21,8 +22,74 @@ export class GenerationService {
     private readonly aiConfigService: AiConfigService,
     private readonly modelResolverService: ModelResolverService,
     private readonly modelCapabilityService: ModelCapabilityService,
-    private readonly chatFileService: ChatFileService
+    private readonly chatFileService: ChatFileService,
+    private readonly mastraClientService: MastraClientService
   ) {}
+
+  // ── Mastra path ──────────────────────────────────────────────────────────────
+
+  private async generateStreamViaMastra(
+    aiGenerateRo: IAiGenerateRo,
+    response: Response
+  ): Promise<void> {
+    const { agentId, threadId: _threadId, resourceId, prompt, messages, fileTokens } = aiGenerateRo;
+
+    try {
+      let resolvedThreadId = _threadId;
+      let isNewThread = false;
+
+      if (!resolvedThreadId) {
+        const thread = await this.mastraClientService.createThread(resourceId!, agentId!);
+        resolvedThreadId = thread.id;
+        isNewThread = true;
+      }
+
+      const body: {
+        messages?: { role: 'user' | 'assistant'; content: string }[];
+        prompt?: string;
+      } = messages?.length
+        ? {
+            messages: (await this.injectFileContextToMessages(messages, fileTokens)) as {
+              role: 'user' | 'assistant';
+              content: string;
+            }[],
+          }
+        : { prompt: await this.injectFileContext(prompt ?? '', fileTokens) };
+
+      response.writeHead(200, {
+        'Content-Type': 'text/plain; charset=utf-8',
+        ...(isNewThread ? { 'X-Thread-Id': resolvedThreadId } : {}),
+      });
+
+      // Mastra agents have no reasoning section — emit the separator immediately
+      response.write('\x00');
+
+      let totalText = 0;
+      for await (const chunk of this.mastraClientService.streamAgent(
+        agentId!,
+        body,
+        resolvedThreadId,
+        resourceId!
+      )) {
+        if (chunk) {
+          totalText += chunk.length;
+          response.write(chunk);
+        }
+      }
+
+      if (totalText === 0) {
+        response.write('The agent completed but produced no output. Please try again.');
+      }
+
+      response.end();
+    } catch (err) {
+      if (!response.headersSent) throw err;
+      this.logger.error(`[generateStreamViaMastra] Error: ${(err as Error).message}`);
+      response.end();
+    }
+  }
+
+  // ── File context helpers ──────────────────────────────────────────────────────
 
   private async injectFileContext(
     prompt: string,
@@ -60,6 +127,11 @@ export class GenerationService {
     aiGenerateRo: IAiGenerateRo,
     response: Response
   ): Promise<void> {
+    // Route to Mastra when an agentId + resourceId are supplied
+    if (aiGenerateRo.agentId && aiGenerateRo.resourceId) {
+      return this.generateStreamViaMastra(aiGenerateRo, response);
+    }
+
     try {
       const {
         prompt,

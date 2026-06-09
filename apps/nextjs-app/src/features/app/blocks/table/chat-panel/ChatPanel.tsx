@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   aiGenerateStream,
+  deleteAiThread,
   deleteChatFile,
   getSignature,
   listChatFiles,
@@ -10,7 +11,7 @@ import {
 } from '@teable/openapi';
 import type { IChatFileVo } from '@teable/openapi';
 import { ReactQueryKeys } from '@teable/sdk';
-import { useIsTouchDevice } from '@teable/sdk/hooks';
+import { useIsTouchDevice, useSession } from '@teable/sdk/hooks';
 import { cn } from '@teable/ui-lib/shadcn';
 import axios from 'axios';
 import { useTranslation } from 'next-i18next';
@@ -32,6 +33,7 @@ import { countSelectedRows, loadStoredMessages, readStream } from './helpers';
 import {
   ALLOWED_EXTENSIONS,
   ALLOWED_MIME_TYPES,
+  MASTRA_AGENTS,
   MAX_FILE_SIZE,
   PANEL_DEFAULT_WIDTH,
 } from './types';
@@ -46,6 +48,8 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
   const { t } = useTranslation('common');
   const isTouchDevice = useIsTouchDevice();
   const queryClient = useQueryClient();
+  const { user } = useSession();
+  const userId = user?.id;
 
   const [activeTab, setActiveTab] = useState<'chat' | 'files' | 'ingest'>('chat');
   const [messages, setMessages] = useState<IMessage[]>(() => loadStoredMessages(baseId));
@@ -54,6 +58,17 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
   const [contextDismissed, setContextDismissed] = useState(false);
   const [panelWidth, setPanelWidth] = useState(PANEL_DEFAULT_WIDTH);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Mastra agent + thread state
+  const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>(() => {
+    try {
+      return localStorage.getItem(`chat-agent:${baseId}`) ?? undefined;
+    } catch {
+      return undefined;
+    }
+  });
+  const [threadId, setThreadId] = useState<string | undefined>(undefined);
+  const hasRestoredThreadRef = useRef(false);
 
   const [uploadingFiles, setUploadingFiles] = useState<IUploadingFile[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -110,14 +125,60 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
     };
   }, []);
 
+  // Restore thread from localStorage once userId is available (runs once per session)
   useEffect(() => {
-    if (isStreaming) return;
+    if (!userId || hasRestoredThreadRef.current) return;
+    hasRestoredThreadRef.current = true;
+    if (!selectedAgentId) return;
+    try {
+      const stored = localStorage.getItem(`chat-thread:${baseId}:${userId}`);
+      if (stored) {
+        setThreadId(stored);
+        setMessages([
+          {
+            role: 'assistant',
+            content: t('ai.chat.resumedSession', '↩ Resumed previous session'),
+            isDivider: true,
+          },
+        ]);
+      }
+    } catch {
+      // localStorage unavailable
+    }
+  }, [baseId, userId, selectedAgentId, t]);
+
+  // Persist selectedAgentId to localStorage
+  useEffect(() => {
+    try {
+      if (selectedAgentId) {
+        localStorage.setItem(`chat-agent:${baseId}`, selectedAgentId);
+      } else {
+        localStorage.removeItem(`chat-agent:${baseId}`);
+      }
+    } catch {
+      // localStorage unavailable
+    }
+  }, [baseId, selectedAgentId]);
+
+  // Persist threadId to localStorage
+  useEffect(() => {
+    if (!userId || !threadId) return;
+    try {
+      localStorage.setItem(`chat-thread:${baseId}:${userId}`, threadId);
+    } catch {
+      // localStorage unavailable
+    }
+  }, [baseId, threadId, userId]);
+
+  // Don't save Mastra conversations to localStorage (they live in Mastra memory server-side)
+  useEffect(() => {
+    if (isStreaming || selectedAgentId) return;
     try {
       localStorage.setItem(`chat-history:${baseId}`, JSON.stringify(messages));
     } catch {
       // localStorage unavailable or quota exceeded
     }
-  }, [baseId, messages, isStreaming]);
+  }, [baseId, messages, isStreaming, selectedAgentId]);
 
   // ---------------------------------------------------------------------------
   // File upload
@@ -211,8 +272,11 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
       const controller = new AbortController();
       abortRef.current = controller;
 
-      const apiMessages = history.map((m, i) => {
-        if (i === history.length - 1 && m.role === 'user' && selectedRecordsContext) {
+      // Filter out divider messages — they're UI-only and must not be sent to the API
+      const chatHistory = history.filter((m) => !m.isDivider);
+
+      const apiMessages = chatHistory.map((m, i) => {
+        if (i === chatHistory.length - 1 && m.role === 'user' && selectedRecordsContext) {
           return {
             role: m.role,
             content: `The user has selected these records from the table:\n\n${selectedRecordsContext}\n\n${m.content}`,
@@ -266,10 +330,27 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
       try {
         const res = await aiGenerateStream(
           baseId,
-          { messages: apiMessages, fileTokens: fileTokens.length ? fileTokens : undefined },
+          {
+            messages: apiMessages,
+            fileTokens: fileTokens.length ? fileTokens : undefined,
+            ...(selectedAgentId && userId
+              ? {
+                  agentId: selectedAgentId,
+                  resourceId: userId,
+                  ...(threadId ? { threadId } : {}),
+                }
+              : {}),
+          },
           controller.signal
         );
         if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+        // Capture new thread ID from header (only emitted when a new thread was created)
+        const newThreadId = res.headers.get('X-Thread-Id');
+        if (newThreadId) {
+          setThreadId(newThreadId);
+        }
+
         reader = res.body.getReader();
         await readStream(reader, appendChunk);
       } catch (err) {
@@ -296,7 +377,7 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
         abortRef.current = null;
       }
     },
-    [selectedRecordsContext, baseId, t]
+    [selectedRecordsContext, baseId, t, selectedAgentId, userId, threadId]
   );
 
   const handleSubmit = useCallback(
@@ -329,22 +410,66 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
     abortRef.current?.abort();
   }, []);
 
-  const handleClearSession = useCallback(() => {
+  const handleClearSession = useCallback(async () => {
     abortRef.current?.abort();
+
+    if (threadId) {
+      try {
+        await deleteAiThread(baseId, threadId);
+      } catch {
+        // best-effort — clear locally regardless
+      }
+      setThreadId(undefined);
+      if (userId) {
+        try {
+          localStorage.removeItem(`chat-thread:${baseId}:${userId}`);
+        } catch {
+          // ignore
+        }
+      }
+    } else {
+      try {
+        localStorage.removeItem(`chat-history:${baseId}`);
+      } catch {
+        // localStorage unavailable
+      }
+    }
+
     setMessages([]);
     setIsStreaming(false);
     setIsThinking(false);
-    try {
-      localStorage.removeItem(`chat-history:${baseId}`);
-    } catch {
-      // localStorage unavailable
-    }
-  }, [baseId]);
+  }, [baseId, threadId, userId]);
+
+  const handleAgentChange = useCallback(
+    (agentId: string | undefined) => {
+      setSelectedAgentId(agentId);
+      // Switching agents starts a fresh session
+      setThreadId(undefined);
+      setMessages([]);
+      if (userId) {
+        try {
+          localStorage.removeItem(`chat-thread:${baseId}:${userId}`);
+        } catch {
+          // ignore
+        }
+      }
+      if (!agentId) {
+        // Switching back to local — restore local message history
+        setMessages(loadStoredMessages(baseId));
+      }
+    },
+    [baseId, userId]
+  );
 
   const lastAssistantMessage = useMemo(() => {
     const last = messages[messages.length - 1];
     return last?.role === 'assistant' ? last.content : '';
   }, [messages]);
+
+  const agentLabel = useMemo(
+    () => MASTRA_AGENTS.find((a) => a.id === selectedAgentId)?.label,
+    [selectedAgentId]
+  );
 
   // ---------------------------------------------------------------------------
   // File delete
@@ -379,6 +504,8 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
         onClose={close}
         onToggleExpanded={toggleExpanded}
         onClearSession={handleClearSession}
+        agentLabel={agentLabel}
+        onClearAgent={agentLabel ? () => handleAgentChange(undefined) : undefined}
       />
 
       <ChatPanelTabs
@@ -404,11 +531,13 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
             selectedFiles={selectedFiles}
             uploadingFiles={uploadingFiles}
             uploadError={uploadError}
+            selectedAgentId={selectedAgentId}
             onSubmit={handleSubmit}
             onStop={handleStop}
             onAttachClick={() => fileInputRef.current?.click()}
             onToggleFileSelection={toggleFileSelection}
             onRemoveUploadingFile={removeUploadingFile}
+            onAgentChange={handleAgentChange}
           />
         </>
       )}

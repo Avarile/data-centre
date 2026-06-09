@@ -19,6 +19,8 @@ interface IChatPanelHeaderProps {
   onClose: () => void;
   onToggleExpanded: () => void;
   onClearSession: () => void;
+  agentLabel?: string;
+  onClearAgent?: () => void;
 }
 
 export const ChatPanelHeader = ({
@@ -27,14 +29,31 @@ export const ChatPanelHeader = ({
   onClose,
   onToggleExpanded,
   onClearSession,
+  agentLabel,
+  onClearAgent,
 }: IChatPanelHeaderProps) => {
   const { t } = useTranslation('common');
 
   return (
     <div className="flex shrink-0 items-center justify-between px-3 py-2">
-      <div className="flex items-center gap-2">
-        <MessageSquare className="size-4 text-muted-foreground" />
+      <div className="flex min-w-0 items-center gap-2">
+        <MessageSquare className="size-4 shrink-0 text-muted-foreground" />
         <span className="text-sm font-medium">{t('ai.chat.title', 'AI Chat')}</span>
+        {agentLabel && (
+          <div className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+            <span className="truncate">{agentLabel}</span>
+            {onClearAgent && (
+              <button
+                type="button"
+                className="ml-0.5 shrink-0 hover:text-primary/70"
+                onClick={onClearAgent}
+                title={t('ai.chat.switchToLocal', 'Switch to Local AI')}
+              >
+                <X className="size-3" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-1">
         <AlertDialog>

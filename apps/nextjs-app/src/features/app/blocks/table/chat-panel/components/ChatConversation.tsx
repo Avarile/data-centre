@@ -44,6 +44,19 @@ export const ChatConversation = ({ messages, isStreaming, isThinking }: IChatCon
         )}
 
         {messages.map((msg, i) => {
+          if (msg.isDivider) {
+            return (
+              <div
+                key={i}
+                className="flex items-center gap-3 px-1 py-2 text-xs text-muted-foreground"
+              >
+                <div className="h-px flex-1 bg-border" />
+                <span>{msg.content}</span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+            );
+          }
+
           const isLastAssistant = msg.role === 'assistant' && i === messages.length - 1;
           const showThinking = isLastAssistant && isThinking;
           const hasReasoning = !!msg.reasoning;

@@ -2,7 +2,9 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  NotFoundException,
   Param,
   Post,
   Res,
@@ -13,6 +15,8 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { aiGenerateRoSchema, IAiGenerateRo } from '@teable/openapi';
 import { Response } from 'express';
 import { memoryStorage } from 'multer';
+import { ClsService } from 'nestjs-cls';
+import { IClsStore } from '../../types/cls';
 import { ZodValidationPipe } from '../../zod.validation.pipe';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { TablePipe } from '../table/open-api/table.pipe';
@@ -29,7 +33,10 @@ const INGEST_MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 @Controller('api/:baseId/ai')
 export class AiController {
-  constructor(private readonly aiService: AiService) {}
+  constructor(
+    private readonly aiService: AiService,
+    private readonly cls: ClsService<IClsStore>
+  ) {}
 
   @Post('/generate-stream')
   @Permissions('base|read')
@@ -52,6 +59,41 @@ export class AiController {
   async getAIDisableAIActions(@Param('baseId') baseId: string) {
     return await this.aiService.getAIDisableAIActions(baseId);
   }
+
+  // ── Mastra thread management ─────────────────────────────────────────────
+
+  @Post('/threads')
+  @Permissions('base|read')
+  async createThread(
+    @Param('baseId') _baseId: string,
+    @Body() body: { agentId: string; title?: string }
+  ) {
+    const userId = this.cls.get('user').id;
+    return this.aiService.createThread(userId, body.agentId, body?.title);
+  }
+
+  @Get('/threads')
+  @Permissions('base|read')
+  async listThreads(@Param('baseId') _baseId: string) {
+    const userId = this.cls.get('user').id;
+    return this.aiService.listThreads(userId);
+  }
+
+  @Get('/threads/:threadId')
+  @Permissions('base|read')
+  async getThread(@Param('baseId') _baseId: string, @Param('threadId') threadId: string) {
+    const thread = await this.aiService.getThread(threadId);
+    if (!thread) throw new NotFoundException(`Thread ${threadId} not found`);
+    return thread;
+  }
+
+  @Delete('/threads/:threadId')
+  @Permissions('base|read')
+  async deleteThread(@Param('baseId') _baseId: string, @Param('threadId') threadId: string) {
+    await this.aiService.deleteThread(threadId);
+  }
+
+  // ── TTS ──────────────────────────────────────────────────────────────────
 
   @Post('/tts')
   @Permissions('base|read')

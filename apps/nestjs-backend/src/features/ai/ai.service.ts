@@ -14,12 +14,13 @@ import {
   AiConfigService,
   GatewayModelService,
   GenerationService,
+  MastraClientService,
   ModelCapabilityService,
   ModelResolverService,
   TtsService,
   INSTANCE_PROVIDER_NAME,
 } from './service';
-import type { ILanguageModelV2 } from './service';
+import type { ILanguageModelV2, IMastraThread } from './service';
 
 export { INSTANCE_PROVIDER_NAME };
 export type { ILanguageModelV2 };
@@ -30,6 +31,7 @@ export class AiService {
     private readonly aiConfigService: AiConfigService,
     private readonly gatewayModelService: GatewayModelService,
     private readonly generationService: GenerationService,
+    private readonly mastraClientService: MastraClientService,
     private readonly modelCapabilityService: ModelCapabilityService,
     private readonly modelResolverService: ModelResolverService,
     private readonly ttsService: TtsService,
@@ -202,6 +204,24 @@ export class AiService {
 
   generateText(baseId: string, aiGenerateRo: IAiGenerateRo): Promise<string> {
     return this.generationService.generateText(baseId, aiGenerateRo);
+  }
+
+  // ── Mastra threads ────────────────────────────────────────────────────────
+
+  createThread(resourceId: string, agentId: string, title?: string): Promise<IMastraThread> {
+    return this.mastraClientService.createThread(resourceId, agentId, title);
+  }
+
+  getThread(threadId: string): Promise<IMastraThread | null> {
+    return this.mastraClientService.getThread(threadId);
+  }
+
+  deleteThread(threadId: string): Promise<void> {
+    return this.mastraClientService.deleteThread(threadId);
+  }
+
+  listThreads(resourceId: string): Promise<IMastraThread[]> {
+    return this.mastraClientService.listThreads(resourceId);
   }
 
   // ── TTS ───────────────────────────────────────────────────────────────────

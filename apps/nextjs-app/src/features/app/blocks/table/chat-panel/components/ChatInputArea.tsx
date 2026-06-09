@@ -1,6 +1,6 @@
 import { Check, Paperclip, X } from '@teable/icons';
 import type { IChatFileVo } from '@teable/openapi';
-import { FileIcon, Files } from 'lucide-react';
+import { Bot, FileIcon, Files } from 'lucide-react';
 import { useTranslation } from 'next-i18next';
 import {
   ModelSelector,
@@ -18,11 +18,17 @@ import {
   PromptInputButton,
   PromptInputFooter,
   PromptInputProvider,
+  PromptInputSelect,
+  PromptInputSelectContent,
+  PromptInputSelectItem,
+  PromptInputSelectTrigger,
+  PromptInputSelectValue,
   PromptInputSubmit,
   PromptInputTextarea,
   usePromptInputController,
 } from '../../../../../../components/ai-elements/prompt-input';
 import { formatBytes } from '../helpers';
+import { MASTRA_AGENTS } from '../types';
 import type { IUploadingFile } from '../types';
 import { VoiceParser } from './VoiceParser';
 
@@ -36,6 +42,7 @@ interface IChatInputAreaProps {
   selectedFiles: IChatFileVo[];
   uploadingFiles: IUploadingFile[];
   uploadError: string | null;
+  selectedAgentId: string | undefined;
   onSubmit: (
     // eslint-disable-next-line @typescript-eslint/consistent-type-imports
     message: import('../../../../../../components/ai-elements/prompt-input').PromptInputMessage
@@ -44,6 +51,7 @@ interface IChatInputAreaProps {
   onAttachClick: () => void;
   onToggleFileSelection: (fileId: string) => void;
   onRemoveUploadingFile: (id: string) => void;
+  onAgentChange: (agentId: string | undefined) => void;
 }
 
 // Inner component — has access to PromptInputProvider context for hasText derivation
@@ -57,11 +65,13 @@ const ChatInputAreaContent = ({
   selectedFiles,
   uploadingFiles,
   uploadError,
+  selectedAgentId,
   onSubmit,
   onStop,
   onAttachClick,
   onToggleFileSelection,
   onRemoveUploadingFile,
+  onAgentChange,
 }: IChatInputAreaProps) => {
   const { t } = useTranslation('common');
   const controller = usePromptInputController();
@@ -88,6 +98,26 @@ const ChatInputAreaContent = ({
             >
               <Paperclip className="size-4" />
             </PromptInputButton>
+
+            <PromptInputSelect
+              value={selectedAgentId ?? 'local'}
+              onValueChange={(v) => onAgentChange(v === 'local' ? undefined : v)}
+            >
+              <PromptInputSelectTrigger className="h-auto gap-0.5 px-1.5 py-0.5 text-xs">
+                <Bot className="size-3.5 shrink-0" />
+                <PromptInputSelectValue />
+              </PromptInputSelectTrigger>
+              <PromptInputSelectContent>
+                <PromptInputSelectItem value="local">
+                  {t('ai.chat.agentLocal', 'Local AI')}
+                </PromptInputSelectItem>
+                {MASTRA_AGENTS.map((agent) => (
+                  <PromptInputSelectItem key={agent.id} value={agent.id}>
+                    {agent.label}
+                  </PromptInputSelectItem>
+                ))}
+              </PromptInputSelectContent>
+            </PromptInputSelect>
 
             {chatFiles.length > 0 && (
               <ModelSelector>

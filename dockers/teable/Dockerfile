@@ -152,6 +152,9 @@ COPY --from=post-builder --link --chown=1001:1001 /app/package.json ./package.js
 COPY --from=post-builder --link --chown=1001:1001 /app/plugins/.next/standalone/plugins ./plugins
 COPY --from=post-builder --link --chown=1001:1001 /app/apps/nestjs-backend/static ./static
 
+COPY --from=post-builder --link --chown=1001:1001 /app/apps/mastra-ai/.mastra ./apps/mastra-ai/.mastra
+COPY --from=post-builder --link --chown=1001:1001 /app/apps/mastra-ai/node_modules ./apps/mastra-ai/node_modules
+
 COPY --chown=nodejs:nodejs scripts/start.sh ./scripts/start.sh
 COPY --chown=nodejs:nodejs scripts/db-migrate.mjs ./scripts/db-migrate.mjs
 COPY --chown=nodejs:nodejs scripts/wait-for ./scripts/wait-for

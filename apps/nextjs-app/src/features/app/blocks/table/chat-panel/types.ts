@@ -2,7 +2,13 @@ export interface IMessage {
   role: 'user' | 'assistant';
   content: string;
   reasoning?: string;
+  isDivider?: boolean;
 }
+
+export const MASTRA_AGENTS = [
+  { id: 'knowledge-manager-non-rag', label: 'Knowledge Search' },
+  { id: 'knowledge-manager-rag', label: 'RAG Search' },
+] as const;
 
 export interface IGridSelection {
   rows: [number, number][] | null;

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BACKUP_FILE="/home/avarile/Documents/dev-ops/infra/teable_backup.sql"
+BACKUP_FILE="/home/avarile/Documents/codeRepo/data-centre/scripts/customized/backup/teable_backup.sql"
 CONTAINER="infra-postgres-1"
 POSTGRES_USER="avarile"
 POSTGRES_DB="cybernetics"
