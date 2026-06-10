@@ -50,6 +50,8 @@ apps/nextjs-statics
 **/db
 !packages/v2/adapter-repository-postgres/src/db
 !packages/v2/adapter-repository-postgres/src/db/**
+!apps/mastra-ai/src/mastra/db
+!apps/mastra-ai/src/mastra/db/**
 **/.assets
 **/.temporary
 **.DS_Store

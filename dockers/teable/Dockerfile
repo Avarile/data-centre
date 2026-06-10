@@ -8,7 +8,7 @@ ARG BUILD_VERSION="1.0.0-alpha"
 
 FROM node:${NODE_VERSION}-bookworm AS deps
 ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
+ENV PATH="$PNPM_HOME/bin:$PATH"
 RUN corepack enable && pnpm add npm-run-all2 zx -g
 
 # Disabling some well-known postinstall scripts
@@ -94,12 +94,12 @@ FROM tianon/gosu:1.19 AS gosu
 
 FROM node:${NODE_VERSION}-bookworm-slim AS runner
 
+ENV PNPM_HOME="/pnpm"
 ENV TZ=UTC \
     NODE_ENV=production \
     PORT=${NEXTJS_APP_PORT:-3000}\
     NEXTJS_DIR=apps/nextjs-app \
-    PNPM_HOME="/pnpm" \
-    PATH="$PNPM_HOME:$PATH"
+    PATH="$PNPM_HOME/bin:$PATH"
 
 RUN set -ex; \
         npm install zx -g; \
@@ -159,6 +159,7 @@ COPY --chown=nodejs:nodejs scripts/start.sh ./scripts/start.sh
 COPY --chown=nodejs:nodejs scripts/db-migrate.mjs ./scripts/db-migrate.mjs
 COPY --chown=nodejs:nodejs scripts/wait-for ./scripts/wait-for
 
+ARG BUILD_VERSION
 ENV BUILD_VERSION=$BUILD_VERSION
 
 EXPOSE ${PORT}
