@@ -122,7 +122,7 @@ describeV2('V2 schema operation runner recovery (e2e)', () => {
   it('repairs a failed schema-only table create operation from the Nest background runner', async () => {
     const createRes = await apiCreateTable(baseId, {
       name: 'Schema operation recovery',
-      fields: [{ name: 'Name', type: FieldType.SingleLineText, isPrimary: true }],
+      fields: [{ name: 'Name', type: FieldType.SingleLineText }],
       records: [],
     });
     expect(createRes.status).toBe(201);

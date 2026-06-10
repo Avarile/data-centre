@@ -2,8 +2,9 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 
 import type { INestApplication } from '@nestjs/common';
-import type { ILinkFieldOptions, ITableFullVo } from '@teable/core';
+import type { ILinkFieldOptions } from '@teable/core';
 import { FieldKeyType, FieldType, Relationship, getRandomString } from '@teable/core';
+import type { ITableFullVo } from '@teable/openapi';
 import { PrismaService } from '@teable/db-main-prisma';
 import type { Knex } from 'knex';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';

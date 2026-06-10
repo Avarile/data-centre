@@ -1,6 +1,6 @@
 import { env } from '../../env.js';
 
-const BASE_URL = 'https://projects.avarile.com';
+const BASE_URL = env.TEABLE_BASE_URL;
 
 export interface TeableRecord<T = Record<string, unknown>> {
   id: string;

@@ -1,3 +1,4 @@
+import type { IFieldRo } from '@teable/core';
 import { FieldType, ViewType } from '@teable/core';
 import { describe, expect, it } from 'vitest';
 
@@ -16,8 +17,8 @@ describe('mapLegacyCreateTableToV2Input', () => {
           id: 'fldRollup',
           name: 'Revenue Total',
           type: FieldType.Rollup,
-          cellValueType: 'number' as never,
-          isMultipleCellValue: false as never,
+          cellValueType: 'number',
+          isMultipleCellValue: false,
           options: {
             expression: sumValuesExpression,
             timeZone: 'UTC',
@@ -27,7 +28,7 @@ describe('mapLegacyCreateTableToV2Input', () => {
             foreignTableId,
             lookupFieldId: revenueFieldId,
           },
-        },
+        } as unknown as IFieldRo,
       ],
       views: [{ type: ViewType.Grid, name: 'Grid' }],
       records: [],
@@ -60,8 +61,8 @@ describe('mapLegacyCreateTableToV2Input', () => {
           id: 'fldConditionalRollup',
           name: 'High Revenue Total',
           type: FieldType.ConditionalRollup,
-          cellValueType: 'number' as never,
-          isMultipleCellValue: false as never,
+          cellValueType: 'number',
+          isMultipleCellValue: false,
           options: {
             foreignTableId,
             lookupFieldId: revenueFieldId,
@@ -72,14 +73,14 @@ describe('mapLegacyCreateTableToV2Input', () => {
               filterSet: [{ fieldId: revenueFieldId, operator: 'isGreater', value: 100 }],
             },
           },
-        },
+        } as unknown as IFieldRo,
         {
           id: 'fldConditionalLookup',
           name: 'High Revenue Company',
           type: FieldType.SingleLineText,
           isLookup: true,
           isConditionalLookup: true,
-          isMultipleCellValue: true as never,
+          isMultipleCellValue: true,
           options: {
             formatting: { type: 'singleLineText' },
           },
@@ -91,7 +92,7 @@ describe('mapLegacyCreateTableToV2Input', () => {
               filterSet: [{ fieldId: revenueFieldId, operator: 'isGreater', value: 100 }],
             },
           },
-        },
+        } as unknown as IFieldRo,
       ],
       views: [{ type: ViewType.Grid, name: 'Grid' }],
       records: [],

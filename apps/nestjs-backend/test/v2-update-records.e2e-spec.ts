@@ -33,7 +33,7 @@ describe('V2Controller updateRecords (e2e)', () => {
     const table = await createTable(baseId, {
       name,
       fields: [
-        { name: 'Title', type: FieldType.SingleLineText, isPrimary: true },
+        { name: 'Title', type: FieldType.SingleLineText },
         { name: 'Amount', type: FieldType.Number },
         { name: 'Status', type: FieldType.SingleLineText },
       ],
@@ -100,7 +100,7 @@ describe('V2Controller updateRecords (e2e)', () => {
     const table = await createTable(baseId, {
       name: 'v2 update records',
       fields: [
-        { name: 'Title', type: FieldType.SingleLineText, isPrimary: true },
+        { name: 'Title', type: FieldType.SingleLineText },
         { name: 'Amount', type: FieldType.Number },
         { name: 'Status', type: FieldType.SingleLineText },
       ],
@@ -299,7 +299,7 @@ describe('V2Controller updateRecords (e2e)', () => {
     const table = await createTable(baseId, {
       name: 'v2 update records by ids',
       fields: [
-        { name: 'Title', type: FieldType.SingleLineText, isPrimary: true },
+        { name: 'Title', type: FieldType.SingleLineText },
         { name: 'Status', type: FieldType.SingleLineText },
       ],
     });
@@ -381,7 +381,7 @@ describe('V2Controller updateRecords (e2e)', () => {
     const table = await createTable(baseId, {
       name: 'v2 sparse update preserves omitted single select',
       fields: [
-        { name: 'Title', type: FieldType.SingleLineText, isPrimary: true },
+        { name: 'Title', type: FieldType.SingleLineText },
         {
           name: 'Status',
           type: FieldType.SingleSelect,
@@ -473,7 +473,7 @@ describe('V2Controller updateRecords (e2e)', () => {
     const table = await createTable(baseId, {
       name: 'v2 sparse update required single select',
       fields: [
-        { name: 'Title', type: FieldType.SingleLineText, isPrimary: true },
+        { name: 'Title', type: FieldType.SingleLineText },
         {
           name: 'Status',
           type: FieldType.SingleSelect,
@@ -600,7 +600,7 @@ describe('V2Controller updateRecords (e2e)', () => {
     const table = await createTable(baseId, {
       name: 'v2 update records empty filter',
       fields: [
-        { name: 'Title', type: FieldType.SingleLineText, isPrimary: true },
+        { name: 'Title', type: FieldType.SingleLineText },
         { name: 'Status', type: FieldType.SingleLineText },
       ],
     });

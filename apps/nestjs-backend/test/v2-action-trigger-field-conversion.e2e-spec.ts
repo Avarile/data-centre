@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { INestApplication } from '@nestjs/common';
-import { FieldKeyType, FieldType, getActionTriggerChannel } from '@teable/core';
+import { FieldKeyType, FieldType, Relationship, getActionTriggerChannel } from '@teable/core';
 import { axios, X_CANARY_HEADER } from '@teable/openapi';
 import type { Connection } from 'sharedb/lib/client';
 import { ShareDbService } from '../src/share-db/share-db.service';
@@ -164,7 +164,7 @@ describe('V2 action trigger field conversion (e2e)', () => {
     const table = await createTable(baseId, {
       name: 'v2-action-trigger-field-conversion',
       fields: [
-        { name: 'Name', type: FieldType.SingleLineText, isPrimary: true },
+        { name: 'Name', type: FieldType.SingleLineText },
         { name: amountTextFieldName, type: FieldType.SingleLineText },
       ],
     });
@@ -253,7 +253,7 @@ describe('V2 action trigger field conversion (e2e)', () => {
     const table = await createTable(baseId, {
       name: 'v2-action-trigger-field-conversion-formula',
       fields: [
-        { name: 'Name', type: FieldType.SingleLineText, isPrimary: true },
+        { name: 'Name', type: FieldType.SingleLineText },
         { name: amountTextFieldName, type: FieldType.SingleLineText },
       ],
     });
@@ -330,10 +330,10 @@ describe('V2 action trigger field conversion (e2e)', () => {
     const foreignTable = await createTable(baseId, {
       name: 'v2-action-trigger-foreign-schema-source',
       fields: [
-        { name: 'Name', type: 'singleLineText', isPrimary: true },
+        { name: 'Name', type: FieldType.SingleLineText },
         {
           name: 'Status',
-          type: 'singleSelect',
+          type: FieldType.SingleSelect,
           options: { choices: [optionOpen, optionDone] },
         },
       ],
@@ -355,14 +355,14 @@ describe('V2 action trigger field conversion (e2e)', () => {
         {
           id: hostPrimaryFieldId,
           name: 'Name',
-          type: 'singleLineText',
+          type: FieldType.SingleLineText,
         },
         {
           id: linkFieldId,
           name: 'Link',
-          type: 'link',
+          type: FieldType.Link,
           options: {
-            relationship: 'manyOne',
+            relationship: Relationship.ManyOne,
             foreignTableId: foreignTable.id,
             lookupFieldId: foreignPrimaryFieldId,
             isOneWay: true,
@@ -460,7 +460,7 @@ describe('V2 action trigger field conversion (e2e)', () => {
     const table = await createTable(baseId, {
       name: 'v2-action-trigger-create-formula-field',
       fields: [
-        { name: 'Name', type: FieldType.SingleLineText, isPrimary: true },
+        { name: 'Name', type: FieldType.SingleLineText },
         { id: sourceFieldId, name: amountTextFieldName, type: FieldType.Number },
       ],
     });

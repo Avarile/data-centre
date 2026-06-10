@@ -122,10 +122,10 @@ describe('Link field multi-config toggle regression (e2e)', () => {
         fieldKeyType: FieldKeyType.Id,
       });
       const firstRecord = sourceRecords.records.find(
-        (record) => record.id === sourceTable.records[0].id
+        (record) => record.id === sourceTable!.records[0].id
       );
       const secondRecord = sourceRecords.records.find(
-        (record) => record.id === sourceTable.records[1].id
+        (record) => record.id === sourceTable!.records[1].id
       );
 
       expect(firstRecord?.fields[linkField.id]).toEqual([

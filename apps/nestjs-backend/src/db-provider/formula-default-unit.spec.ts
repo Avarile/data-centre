@@ -47,6 +47,7 @@ describe('convertFormulaToGeneratedColumn blank numeric comparisons', () => {
       dbFieldName: 'weight',
       name: 'Weight',
       type: FieldType.Number,
+      options: {},
       cellValueType: CellValueType.Number,
       dbFieldType: DbFieldType.Real,
     });
@@ -77,6 +78,7 @@ describe('convertFormulaToSelectQuery blank numeric comparisons', () => {
       dbFieldName: 'weight',
       name: 'Weight',
       type: FieldType.Number,
+      options: {},
       cellValueType: CellValueType.Number,
       dbFieldType: DbFieldType.Real,
     });

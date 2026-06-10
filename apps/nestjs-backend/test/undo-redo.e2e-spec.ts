@@ -420,7 +420,7 @@ describe('Undo Redo (e2e)', () => {
     async () => {
       const constrainedTable = await createTable(baseId, {
         name: `undo-trash-${getRandomString(6)}`,
-        fields: [{ type: FieldType.SingleLineText, name: 'Title', isPrimary: true }],
+        fields: [{ type: FieldType.SingleLineText, name: 'Title' }],
         records: [],
       });
       const previousCanaryHeader = axios.defaults.headers.common[X_CANARY_HEADER];
@@ -768,7 +768,7 @@ describe('Undo Redo (e2e)', () => {
     async () => {
       const constrainedTable = await createTable(baseId, {
         name: `undo-constrained-${getRandomString(6)}`,
-        fields: [{ type: FieldType.SingleLineText, name: 'Title', isPrimary: true }],
+        fields: [{ type: FieldType.SingleLineText, name: 'Title' }],
         records: [],
       });
       const previousCanaryHeader = axios.defaults.headers.common[X_CANARY_HEADER];

@@ -3516,7 +3516,7 @@ describe('OpenAPI formula (e2e)', () => {
           formulaFieldRos.map((field) => ({
             ...field,
             options: {
-              expression: field.options!.expression.replaceAll(
+              expression: (field.options as { expression: string }).expression.replaceAll(
                 lookupFieldId,
                 resolvedLookupFieldId
               ),

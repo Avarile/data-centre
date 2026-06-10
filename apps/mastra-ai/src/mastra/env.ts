@@ -42,6 +42,8 @@ const envSchema = z.object({
   // BACKEND_API_KEY: z.string().optional(),
 
   CYBERNETICS_APP_TOKEN: z.string(),
+
+  TEABLE_BASE_URL: z.string().url().default('https://projects.avarile.com'),
 });
 
 const parsed = envSchema.safeParse(process.env);

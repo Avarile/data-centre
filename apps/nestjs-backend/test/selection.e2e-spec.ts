@@ -2304,35 +2304,38 @@ describe('OpenAPI SelectionController (e2e)', () => {
       const recordOpenApiV2Service = app.get(RecordOpenApiV2Service);
       const deleteByRangeStreamSpy = vi
         .spyOn(recordOpenApiV2Service, 'deleteByRangeStream')
-        .mockImplementation(async function* () {
-          yield {
-            id: 'progress',
-            phase: 'deleting',
-            batchIndex: 0,
-            totalCount: 3,
-            deletedCount: 1,
-            batchDeletedCount: 1,
-          };
-          yield {
-            id: 'error',
-            phase: 'deleting',
-            batchIndex: 1,
-            totalCount: 3,
-            deletedCount: 1,
-            recordIds: [streamTable.records[1]!.id],
-            message: 'chunk 2 failed',
-            code: 'unexpected',
-          };
-          yield {
-            id: 'done',
-            totalCount: 3,
-            deletedCount: 2,
-            data: {
-              deletedCount: 2,
-              deletedRecordIds: [streamTable.records[0]!.id, streamTable.records[2]!.id],
-            },
-          };
-        });
+        .mockImplementation(
+          async () =>
+            (async function* () {
+              yield {
+                id: 'progress',
+                phase: 'deleting',
+                batchIndex: 0,
+                totalCount: 3,
+                deletedCount: 1,
+                batchDeletedCount: 1,
+              };
+              yield {
+                id: 'error',
+                phase: 'deleting',
+                batchIndex: 1,
+                totalCount: 3,
+                deletedCount: 1,
+                recordIds: [streamTable.records[1]!.id],
+                message: 'chunk 2 failed',
+                code: 'unexpected',
+              };
+              yield {
+                id: 'done',
+                totalCount: 3,
+                deletedCount: 2,
+                data: {
+                  deletedCount: 2,
+                  deletedRecordIds: [streamTable.records[0]!.id, streamTable.records[2]!.id],
+                },
+              };
+            })() as unknown as Awaited<ReturnType<RecordOpenApiV2Service['deleteByRangeStream']>>
+        );
 
       try {
         const { progressEvents, doneEvent, errorEvents } = await deleteStreamWithCanary(

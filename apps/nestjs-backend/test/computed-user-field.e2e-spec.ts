@@ -749,7 +749,10 @@ describe('Computed user field (e2e)', () => {
               await getRecord(sourceTable.id, sourceRecordId, { fieldKeyType: FieldKeyType.Id })
             ).data;
 
-            if (latestSourceRecord.fields[ownerField.id]?.title === expectedName) {
+            if (
+              (latestSourceRecord.fields[ownerField.id] as { title?: string } | undefined)
+                ?.title === expectedName
+            ) {
               return latestSourceRecord;
             }
 
@@ -789,9 +792,11 @@ describe('Computed user field (e2e)', () => {
             ).data;
 
             if (
-              latestSourceRecord.fields[ownerField.id]?.title === expectedName &&
+              (latestSourceRecord.fields[ownerField.id] as { title?: string } | undefined)
+                ?.title === expectedName &&
               latestSourceRecord.fields[ownerFormulaField.id] === expectedName &&
-              latestHostRecord.fields[lookupOwnerField.id]?.title === expectedName &&
+              (latestHostRecord.fields[lookupOwnerField.id] as { title?: string } | undefined)
+                ?.title === expectedName &&
               String(latestHostRecord.fields[lookupOwnerFormulaField.id] ?? '').includes(
                 expectedName
               ) &&

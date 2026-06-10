@@ -135,8 +135,15 @@ describe('OpenAPI Record-Group-DateTime-TimeZone (e2e)', async () => {
       });
 
       const groupHeaders = grouped.extra?.groupPoints?.filter(
-        (p): p is { type: GroupPointType.Header; value: string; depth: number } =>
-          p.type === GroupPointType.Header && p.depth === 0 && typeof p.value === 'string'
+        (
+          p
+        ): p is {
+          id: string;
+          type: GroupPointType.Header;
+          depth: number;
+          value: string;
+          isCollapsed: boolean;
+        } => p.type === GroupPointType.Header && p.depth === 0 && typeof p.value === 'string'
       );
 
       expect(groupHeaders?.map((p) => p.value)).toEqual([

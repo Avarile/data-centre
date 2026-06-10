@@ -325,6 +325,10 @@ export class GenerationService {
       config.llmProviders
     );
 
+    if (prompt === undefined) {
+      throw new Error('prompt is required for text generation');
+    }
+
     const { text } = await generateText({
       model: modelInstance,
       prompt,

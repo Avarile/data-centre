@@ -8,7 +8,6 @@ import {
   Relationship,
   SortFunc,
 } from '@teable/core';
-import type { IExtraResult } from '@teable/core';
 import type { IGetRecordsRo, ITableFullVo } from '@teable/openapi';
 import {
   getRecords as apiGetRecords,
@@ -304,7 +303,10 @@ describe('OpenAPI Record-Search-Query (e2e)', async () => {
         projection: projectionFieldIds,
         ignoreViewQuery: true,
       };
-      const res = await axios.post<{ ids: string[]; extra?: IExtraResult }>(
+      const res = await axios.post<{
+        ids: string[];
+        extra?: { searchHitIndex?: { recordId: string; fieldId: string }[] | null };
+      }>(
         urlBuilder('/table/{tableId}/record/socket/doc-ids', {
           tableId: table.id,
         }),
