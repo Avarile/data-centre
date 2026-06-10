@@ -283,8 +283,8 @@ describe.runIf(process.env.BACKEND_PERFORMANCE_CACHE)('Performance Cache Decorat
       expect(results.every((r) => r === results[0])).toBe(true);
 
       // Should complete in roughly the time of one operation
-      // (allowing for some overhead)
-      expect(endTime - startTime).toBeLessThan(1000);
+      // (allowing for some overhead — 10 sequential runs would take 5000ms)
+      expect(endTime - startTime).toBeLessThan(2000);
 
       const stats = testService.getCacheStats();
       expect(stats.hits).toBe(9);

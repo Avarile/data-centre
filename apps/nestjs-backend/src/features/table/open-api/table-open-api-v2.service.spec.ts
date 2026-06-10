@@ -118,7 +118,7 @@ describe('TableOpenApiV2Service.createTable', () => {
             name: 'Related',
             type: FieldType.Link,
             options: {
-              relationship: 'manyMany',
+              relationship: 'manyMany' as never,
               foreignTableId: 'tblForeign',
             },
           },

@@ -93,7 +93,7 @@ describe('SelectionController', () => {
       pasteStream: vi.fn(),
     };
     cls = {
-      get: vi.fn(),
+      get: vi.fn() as any,
     };
 
     controller = new SelectionController(
@@ -263,7 +263,7 @@ describe('SelectionController', () => {
         v2Reason: 'canary',
         v2Feature: 'deleteRecord',
       };
-      return values[key];
+      return values[key as string];
     });
     const response = createMockSseResponse();
 
@@ -524,7 +524,7 @@ describe('SelectionController', () => {
       const values: Record<string, unknown> = {
         useV2: true,
       };
-      return values[key];
+      return values[key as string];
     });
 
     async function* createStream(): AsyncIterable<IPasteSelectionStreamEvent> {

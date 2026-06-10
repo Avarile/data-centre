@@ -15,7 +15,7 @@ vi.mock('@opentelemetry/api', async () => {
   return {
     ...actual,
     trace: {
-      ...actual.trace,
+      ...(actual.trace as Record<string, unknown>),
       getActiveSpan,
     },
   };

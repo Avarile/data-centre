@@ -32,6 +32,7 @@ import {
   getRecords,
   getTrashItems,
   ResourceType,
+  TrashType,
   getView,
   getViewList,
   paste,
@@ -63,14 +64,14 @@ const canRunCanaryV2 =
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const waitForTableTrashCount = async (tableId: string, expectedCount: number, maxRetries = 100) => {
   for (let i = 0; i < maxRetries; i++) {
-    const result = await getTrashItems({ resourceId: tableId, resourceType: ResourceType.Table });
+    const result = await getTrashItems({ resourceId: tableId, resourceType: TrashType.Table });
     if (result.data.trashItems.length === expectedCount) {
       return result;
     }
     await sleep(100);
   }
 
-  return await getTrashItems({ resourceId: tableId, resourceType: ResourceType.Table });
+  return await getTrashItems({ resourceId: tableId, resourceType: TrashType.Table });
 };
 const waitForViewVisibility = async (
   tableId: string,

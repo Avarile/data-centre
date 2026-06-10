@@ -356,7 +356,6 @@ describe('V2 action trigger field conversion (e2e)', () => {
           id: hostPrimaryFieldId,
           name: 'Name',
           type: 'singleLineText',
-          isPrimary: true,
         },
         {
           id: linkFieldId,

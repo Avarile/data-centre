@@ -102,6 +102,7 @@ describe('TableTrashListener', () => {
       } as never
     );
     const fieldPayload: IDeleteFieldsPayload = {
+      windowId: 'wndTrashListenerTest',
       operationId: 'oprTrashListenerField',
       tableId: 'tblTrashListenerTable',
       userId: 'usrTrashListenerUser',
@@ -109,6 +110,7 @@ describe('TableTrashListener', () => {
       records: [{ id: 'recTrashListenerOne', fields: { fldText: 'A' } }] as never,
     };
     const viewPayload: IDeleteViewPayload = {
+      windowId: 'wndTrashListenerTest',
       operationId: 'oprTrashListenerView',
       tableId: 'tblTrashListenerTable',
       userId: 'usrTrashListenerUser',

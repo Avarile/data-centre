@@ -197,7 +197,7 @@ describe('V2RecordTrashService', () => {
     };
     const db = {
       transaction: vi.fn(() => ({
-        execute: async (callback: (trx: typeof trx) => Promise<void>) => callback(trx),
+        execute: async (callback: (trx: unknown) => Promise<void>) => callback(trx),
       })),
     };
     const container = {

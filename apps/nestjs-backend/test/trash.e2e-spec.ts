@@ -8,6 +8,7 @@ import {
   getTrashItems,
   resetTrashItems,
   ResourceType,
+  TrashType,
   restoreTrash,
   trashVoSchema,
 } from '@teable/openapi';
@@ -31,14 +32,14 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const waitForBaseTrashItems = async (baseId: string, expectedCount = 1, maxRetries = 100) => {
   for (let i = 0; i < maxRetries; i++) {
-    const result = await getTrashItems({ resourceId: baseId, resourceType: ResourceType.Base });
+    const result = await getTrashItems({ resourceId: baseId, resourceType: TrashType.Base });
     if (result.data.trashItems.length >= expectedCount) {
       return result;
     }
     await sleep(100);
   }
 
-  return await getTrashItems({ resourceId: baseId, resourceType: ResourceType.Base });
+  return await getTrashItems({ resourceId: baseId, resourceType: TrashType.Base });
 };
 
 describe('Trash (e2e)', () => {
@@ -100,7 +101,7 @@ describe('Trash (e2e)', () => {
     it('should get trash for space', async () => {
       await awaitWithSpaceEvent(() => deleteSpace(spaceId));
 
-      const res = await getTrash({ resourceType: ResourceType.Space });
+      const res = await getTrash({ resourceType: TrashType.Space });
 
       expect(trashVoSchema.safeParse(res.data).success).toEqual(true);
     });
@@ -108,7 +109,7 @@ describe('Trash (e2e)', () => {
     it('should get trash for base', async () => {
       await awaitWithBaseEvent(() => deleteBase(baseId));
 
-      const res = await getTrash({ resourceType: ResourceType.Base });
+      const res = await getTrash({ resourceType: TrashType.Base });
 
       expect(trashVoSchema.safeParse(res.data).success).toEqual(true);
     });
@@ -166,7 +167,7 @@ describe('Trash (e2e)', () => {
     it('should restore space successfully', async () => {
       await awaitWithSpaceEvent(() => deleteSpace(spaceId));
 
-      const trash = (await getTrash({ resourceType: ResourceType.Space })).data;
+      const trash = (await getTrash({ resourceType: TrashType.Space })).data;
       const restored = await restoreTrash(trash.trashItems[0].id);
 
       expect(restored.status).toEqual(201);
@@ -175,7 +176,7 @@ describe('Trash (e2e)', () => {
     it('should restore base successfully', async () => {
       await awaitWithBaseEvent(() => deleteBase(baseId));
 
-      const trash = (await getTrash({ resourceType: ResourceType.Base })).data;
+      const trash = (await getTrash({ resourceType: TrashType.Base })).data;
       const restored = await restoreTrash(trash.trashItems[0].id);
 
       expect(restored.status).toEqual(201);
@@ -245,11 +246,10 @@ describe('Trash (e2e)', () => {
 
       expect(trash.trashItems.length).toEqual(3);
 
-      await resetTrashItems({ resourceType: ResourceType.Base, resourceId: baseId });
+      await resetTrashItems({ resourceType: TrashType.Base, resourceId: baseId });
 
-      const resetTrash = (
-        await getTrashItems({ resourceId: baseId, resourceType: ResourceType.Base })
-      ).data;
+      const resetTrash = (await getTrashItems({ resourceId: baseId, resourceType: TrashType.Base }))
+        .data;
 
       expect(resetTrash.trashItems.length).toEqual(0);
     });

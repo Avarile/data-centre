@@ -1,0 +1,12 @@
+{
+  "id": "session-1781015064910",
+  "startedAt": "2026-06-09T14:24:24.911Z",
+  "cwd": "/home/avarile/Documents/codeRepo/data-centre/apps/nestjs-backend/test",
+  "context": {},
+  "metrics": {
+    "edits": 5,
+    "commands": 0,
+    "tasks": 0,
+    "errors": 0
+  }
+}

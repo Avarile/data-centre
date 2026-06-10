@@ -85,7 +85,7 @@ export class RecordsBatchUpdatedRealtimeProjection implements IEventHandler<Reco
             if (previousResult.isErr()) return previousResult;
           }
 
-          return realtimeEngine.applyChange(context, docId, batchedChanges, {
+          return realtimeEngine.applyChange(context, docId!, batchedChanges, {
             version: update.oldVersion,
           });
         };

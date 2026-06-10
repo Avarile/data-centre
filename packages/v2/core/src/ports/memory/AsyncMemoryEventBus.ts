@@ -301,7 +301,8 @@ export class AsyncMemoryEventBus implements IEventBus {
       return;
     }
 
-    let span;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let span: any;
     try {
       span = tracer.startSpan('teable.AsyncMemoryEventBus.projectionGroup', {
         [TeableSpanAttributes.VERSION]: 'v2',

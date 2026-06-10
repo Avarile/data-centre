@@ -11,7 +11,8 @@ import {
   getRecordHistory,
   getTrashItems,
   redo,
-  ResourceType,
+  TableTrashType,
+  TrashType,
   restoreTrash,
   undo,
 } from '@teable/openapi';
@@ -113,11 +114,7 @@ const countRecordHistory = async (client: IRawQueryClient, tableId: string, reco
   }
 };
 
-const countTableTrash = async (
-  client: IRawQueryClient,
-  tableId: string,
-  resourceType: ResourceType
-) => {
+const countTableTrash = async (client: IRawQueryClient, tableId: string, resourceType: string) => {
   try {
     const rows = await client.$queryRawUnsafe<{ count: number }[]>(
       `
@@ -219,7 +216,7 @@ describeSplitDb('Dual DB split smoke (e2e)', () => {
 
   afterAll(async () => {
     if (baseConfigService) {
-      baseConfigService.recordHistoryDisabled = recordHistoryDisabled;
+      baseConfigService.recordHistoryDisabled = recordHistoryDisabled!;
     }
     eventEmitterService?.eventEmitter.removeAllListeners(Events.RECORD_HISTORY_CREATE);
     await app?.close();
@@ -306,18 +303,18 @@ describeSplitDb('Dual DB split smoke (e2e)', () => {
     await awaitWithOperation(() => deleteRecord(table.id, recordId));
 
     await expect(
-      waitForCount(() => countTableTrash(dataPrisma, table.id, ResourceType.Record), 1)
+      waitForCount(() => countTableTrash(dataPrisma, table.id, TableTrashType.Record), 1)
     ).resolves.toBe(1);
     await expect(
       waitForCount(() => countRecordTrash(dataPrisma, table.id, recordId), 1)
     ).resolves.toBe(1);
-    await expect(countTableTrash(metaPrisma, table.id, ResourceType.Record)).resolves.toBe(0);
+    await expect(countTableTrash(metaPrisma, table.id, TableTrashType.Record)).resolves.toBe(0);
     await expect(countRecordTrash(metaPrisma, table.id, recordId)).resolves.toBe(0);
 
-    const trash = await getTrashItems({ resourceId: table.id, resourceType: ResourceType.Table });
+    const trash = await getTrashItems({ resourceId: table.id, resourceType: TrashType.Table });
     const recordTrashItem = trash.data.trashItems.find(
       (item) =>
-        item.resourceType === ResourceType.Record &&
+        item.resourceType === TableTrashType.Record &&
         'resourceIds' in item &&
         item.resourceIds.includes(recordId)
     );
@@ -326,7 +323,7 @@ describeSplitDb('Dual DB split smoke (e2e)', () => {
     await restoreTrash(recordTrashItem!.id);
 
     await expect(
-      waitForCount(() => countTableTrash(dataPrisma, table.id, ResourceType.Record), 0)
+      waitForCount(() => countTableTrash(dataPrisma, table.id, TableTrashType.Record), 0)
     ).resolves.toBe(0);
     await expect(
       waitForCount(() => countRecordTrash(dataPrisma, table.id, recordId), 0)
@@ -337,7 +334,7 @@ describeSplitDb('Dual DB split smoke (e2e)', () => {
 
     await awaitWithOperation(() => deleteRecord(table.id, recordId));
     await expect(
-      waitForCount(() => countTableTrash(dataPrisma, table.id, ResourceType.Record), 1)
+      waitForCount(() => countTableTrash(dataPrisma, table.id, TableTrashType.Record), 1)
     ).resolves.toBe(1);
     await expect(
       waitForCount(() => countRecordTrash(dataPrisma, table.id, recordId), 1)
@@ -346,7 +343,7 @@ describeSplitDb('Dual DB split smoke (e2e)', () => {
     const undoResult = await undo(table.id);
     expect(undoResult.data.status).toBe('fulfilled');
     await expect(
-      waitForCount(() => countTableTrash(dataPrisma, table.id, ResourceType.Record), 0)
+      waitForCount(() => countTableTrash(dataPrisma, table.id, TableTrashType.Record), 0)
     ).resolves.toBe(0);
     await expect(
       waitForCount(() => countRecordTrash(dataPrisma, table.id, recordId), 0)
@@ -358,7 +355,7 @@ describeSplitDb('Dual DB split smoke (e2e)', () => {
     const redoResult = await redo(table.id);
     expect(redoResult.data.status).toBe('fulfilled');
     await expect(
-      waitForCount(() => countTableTrash(dataPrisma, table.id, ResourceType.Record), 1)
+      waitForCount(() => countTableTrash(dataPrisma, table.id, TableTrashType.Record), 1)
     ).resolves.toBe(1);
     await expect(
       waitForCount(() => countRecordTrash(dataPrisma, table.id, recordId), 1)
@@ -399,12 +396,12 @@ describeSplitDb('Dual DB split smoke (e2e)', () => {
     expect(deleteRes.headers['x-teable-v2-reason']).toBeTruthy();
 
     await expect(
-      waitForCount(() => countTableTrash(dataPrisma, table.id, ResourceType.Record), 1)
+      waitForCount(() => countTableTrash(dataPrisma, table.id, TableTrashType.Record), 1)
     ).resolves.toBe(1);
     await expect(
       waitForCount(() => countRecordTrash(dataPrisma, table.id, recordId), 1)
     ).resolves.toBe(1);
-    await expect(countTableTrash(metaPrisma, table.id, ResourceType.Record)).resolves.toBe(0);
+    await expect(countTableTrash(metaPrisma, table.id, TableTrashType.Record)).resolves.toBe(0);
     await expect(countRecordTrash(metaPrisma, table.id, recordId)).resolves.toBe(0);
   });
 });

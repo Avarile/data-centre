@@ -1,5 +1,7 @@
 import type { ILogger } from '@teable/v2-core';
 import { NoopLogger } from '@teable/v2-core';
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore — no type declarations available for this package
 import WebSocketJSONStream from '@teamwork/websocket-json-stream';
 import type ShareDbClass from 'sharedb';
 
