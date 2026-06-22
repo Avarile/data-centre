@@ -100,7 +100,7 @@ export const APIDialog = ({ open, setOpen, children }: APIDialogProps) => {
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className="flex max-h-[90vh] max-w-4xl flex-col overflow-hidden">
+      <DialogContent className="flex h-[90vh] max-h-[95vh] max-w-7xl flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Code2 className="size-5" />

@@ -1,5 +1,29 @@
 import { vectorPool } from './vector-pool.js';
 
+// Arbitrary but fixed key so every instance contends for the same advisory lock.
+const MIGRATION_LOCK_KEY = 0x4111_a1;
+
+/**
+ * Run all startup migrations under a Postgres advisory lock so that concurrent
+ * instances migrate one-at-a-time rather than racing. Throws on failure so a
+ * mis-migrated instance refuses to start (caller logs the fatal error).
+ */
+export async function runAllMigrations(): Promise<void> {
+  const client = await vectorPool.connect();
+  try {
+    await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_KEY]);
+    await runIndexMigrations();
+    await runJobMigrations();
+  } finally {
+    try {
+      await client.query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK_KEY]);
+    } catch {
+      /* best-effort unlock; the lock is released on connection close anyway */
+    }
+    client.release();
+  }
+}
+
 export async function runIndexMigrations(): Promise<void> {
   await vectorPool.query(`CREATE SCHEMA IF NOT EXISTS index_schema`);
 

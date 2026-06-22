@@ -3,10 +3,12 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   NotFoundException,
   Param,
   Post,
+  Query,
   Res,
   UploadedFiles,
   UseInterceptors,
@@ -81,16 +83,48 @@ export class AiController {
 
   @Get('/threads/:threadId')
   @Permissions('base|read')
-  async getThread(@Param('baseId') _baseId: string, @Param('threadId') threadId: string) {
-    const thread = await this.aiService.getThread(threadId);
+  async getThread(
+    @Param('baseId') _baseId: string,
+    @Param('threadId') threadId: string,
+    @Query('agentId') agentId: string
+  ) {
+    const userId = this.cls.get('user').id;
+    const thread = await this.aiService.getThread(threadId, agentId);
     if (!thread) throw new NotFoundException(`Thread ${threadId} not found`);
+    // H2 — a thread is only visible to the user that owns it.
+    if (thread.resourceId !== userId) throw new ForbiddenException('Thread access denied');
     return thread;
+  }
+
+  @Get('/threads/:threadId/messages')
+  @Permissions('base|read')
+  async getThreadMessages(
+    @Param('baseId') _baseId: string,
+    @Param('threadId') threadId: string,
+    @Query('agentId') agentId: string
+  ) {
+    if (!agentId) throw new BadRequestException('agentId is required');
+    const userId = this.cls.get('user').id;
+    // agentId is required so Mastra can resolve the agent's memory.
+    const thread = await this.aiService.getThread(threadId, agentId);
+    if (!thread) throw new NotFoundException(`Thread ${threadId} not found`);
+    // H2 — only the owning user may read a thread's messages.
+    if (thread.resourceId !== userId) throw new ForbiddenException('Thread access denied');
+    return this.aiService.getThreadMessages(threadId, agentId);
   }
 
   @Delete('/threads/:threadId')
   @Permissions('base|read')
-  async deleteThread(@Param('baseId') _baseId: string, @Param('threadId') threadId: string) {
-    await this.aiService.deleteThread(threadId);
+  async deleteThread(
+    @Param('baseId') _baseId: string,
+    @Param('threadId') threadId: string,
+    @Query('agentId') agentId: string
+  ) {
+    const userId = this.cls.get('user').id;
+    const thread = await this.aiService.getThread(threadId, agentId);
+    if (!thread) return; // already gone — idempotent
+    if (thread.resourceId !== userId) throw new ForbiddenException('Thread access denied');
+    await this.aiService.deleteThread(threadId, agentId);
   }
 
   // ── TTS ──────────────────────────────────────────────────────────────────

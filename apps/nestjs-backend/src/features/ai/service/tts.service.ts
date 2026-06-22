@@ -19,7 +19,9 @@ export class TtsService {
       return;
     }
 
-    this.logger.log(`[tts] key=${apiKey.slice(0, 8)}… voice=${voiceId} model=${modelId}`);
+    // Abort the upstream TTS request when the client disconnects (M1).
+    const controller = new AbortController();
+    response.on('close', () => controller.abort());
 
     try {
       const upstream = await fetch(
@@ -32,6 +34,7 @@ export class TtsService {
             Accept: 'audio/mpeg',
           },
           body: JSON.stringify({ text, model_id: modelId }),
+          signal: controller.signal,
         }
       );
 
@@ -52,6 +55,8 @@ export class TtsService {
       response.setHeader('Transfer-Encoding', 'chunked');
       Readable.fromWeb(upstream.body as import('stream/web').ReadableStream).pipe(response);
     } catch (err) {
+      // Client disconnected — the abort is expected.
+      if (controller.signal.aborted) return;
       const detail = (err as Error).message;
       this.logger.error(`[tts] fetch error — ${detail} | voice=${voiceId} model=${modelId}`);
       if (!response.headersSent) {

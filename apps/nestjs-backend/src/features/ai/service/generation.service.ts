@@ -1,9 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import type { Action } from '@teable/core';
 import { Task } from '@teable/openapi';
 import type { IAiGenerateRo } from '@teable/openapi';
 import type { ModelMessage } from 'ai';
 import { generateText, streamText } from 'ai';
 import type { Response } from 'express';
+import { ClsService } from 'nestjs-cls';
+import type { IClsStore } from '../../../types/cls';
+import { PermissionService } from '../../auth/permission.service';
 import { ChatFileService } from '../../chat-file/chat-file.service';
 import { runGeneralInfoAgent } from '../agents/general-agents';
 import type { AgentInput } from '../agents/general-agents';
@@ -14,6 +18,13 @@ import { MastraClientService } from './mastra-client.service';
 import { ModelCapabilityService } from './model-capability.service';
 import { ModelResolverService } from './model-resolver.service';
 
+// Record-level write permissions; holding any one of these makes the caller a writer.
+const WRITE_ACTIONS: Action[] = ['record|create', 'record|update', 'record|delete'];
+// Mastra agents whose toolset can mutate data and therefore require write permission.
+// (The RAG agent's ingest tools are a known residual — gating them per-tool inside
+// the Mastra service is tracked as a follow-up; see the hardening plan.)
+const WRITE_CAPABLE_MASTRA_AGENTS = new Set(['knowledge-manager-non-rag']);
+
 @Injectable()
 export class GenerationService {
   private readonly logger = new Logger(GenerationService.name);
@@ -23,8 +34,30 @@ export class GenerationService {
     private readonly modelResolverService: ModelResolverService,
     private readonly modelCapabilityService: ModelCapabilityService,
     private readonly chatFileService: ChatFileService,
-    private readonly mastraClientService: MastraClientService
+    private readonly mastraClientService: MastraClientService,
+    private readonly permissionService: PermissionService,
+    private readonly cls: ClsService<IClsStore>
   ) {}
+
+  /** Resolve whether the current caller may mutate records in this base. */
+  private async resolveCanWrite(baseId: string): Promise<boolean> {
+    const accessTokenId = this.cls.get('accessTokenId');
+    const permissions = await this.permissionService.getPermissions(baseId, accessTokenId);
+    return WRITE_ACTIONS.some((action) => permissions.includes(action));
+  }
+
+  /** H2 — a thread may only be used by the resource (user) that owns it. */
+  private async assertThreadOwnership(
+    threadId: string,
+    resourceId: string,
+    agentId: string
+  ): Promise<void> {
+    const thread = await this.mastraClientService.getThread(threadId, agentId);
+    // null = thread does not exist yet; Mastra will create it scoped to resourceId.
+    if (thread && thread.resourceId !== resourceId) {
+      throw new ForbiddenException('Thread does not belong to the current user');
+    }
+  }
 
   // ── Mastra path ──────────────────────────────────────────────────────────────
 
@@ -33,6 +66,11 @@ export class GenerationService {
     response: Response
   ): Promise<void> {
     const { agentId, threadId: _threadId, resourceId, prompt, messages, fileTokens } = aiGenerateRo;
+
+    // Abort the upstream Mastra request when the client disconnects (M1).
+    const abortController = new AbortController();
+    const onClose = () => abortController.abort();
+    response.on('close', onClose);
 
     try {
       let resolvedThreadId = _threadId;
@@ -69,7 +107,8 @@ export class GenerationService {
         agentId!,
         body,
         resolvedThreadId,
-        resourceId!
+        resourceId!,
+        abortController.signal
       )) {
         if (chunk) {
           totalText += chunk.length;
@@ -83,9 +122,19 @@ export class GenerationService {
 
       response.end();
     } catch (err) {
+      // Client disconnected — the abort is expected, nothing to send.
+      if (abortController.signal.aborted) return;
       if (!response.headersSent) throw err;
+      // Surface the failure instead of an empty stream (M2); keep details in logs only.
       this.logger.error(`[generateStreamViaMastra] Error: ${(err as Error).message}`);
+      try {
+        response.write('\n\n[error] The assistant encountered an error. Please try again.');
+      } catch {
+        /* response already closed */
+      }
       response.end();
+    } finally {
+      response.off('close', onClose);
     }
   }
 
@@ -127,10 +176,27 @@ export class GenerationService {
     aiGenerateRo: IAiGenerateRo,
     response: Response
   ): Promise<void> {
-    // Route to Mastra when an agentId + resourceId are supplied
-    if (aiGenerateRo.agentId && aiGenerateRo.resourceId) {
-      return this.generateStreamViaMastra(aiGenerateRo, response);
+    const userId = this.cls.get('user').id;
+    const canWrite = await this.resolveCanWrite(baseId);
+
+    // Route to Mastra when an agentId is supplied. The memory scope (resourceId)
+    // is derived from the authenticated session, never trusted from the client (H1).
+    if (aiGenerateRo.agentId && userId) {
+      if (WRITE_CAPABLE_MASTRA_AGENTS.has(aiGenerateRo.agentId) && !canWrite) {
+        throw new ForbiddenException(
+          'You do not have write access to use this agent on this base.'
+        );
+      }
+      if (aiGenerateRo.threadId) {
+        await this.assertThreadOwnership(aiGenerateRo.threadId, userId, aiGenerateRo.agentId);
+      }
+      return this.generateStreamViaMastra({ ...aiGenerateRo, resourceId: userId }, response);
     }
+
+    // Abort the model/agent stream when the client disconnects (M1).
+    const abortController = new AbortController();
+    const onClose = () => abortController.abort();
+    response.on('close', onClose);
 
     try {
       const {
@@ -164,7 +230,13 @@ export class GenerationService {
           input = { prompt: await this.injectFileContext(prompt ?? '', fileTokens) };
         }
 
-        const result = await runGeneralInfoAgent(modelInstance, input, baseId);
+        const result = await runGeneralInfoAgent(
+          modelInstance,
+          input,
+          baseId,
+          canWrite,
+          abortController.signal
+        );
 
         // Stream reasoning text as-is; replace the [ANSWER] marker with \x00 so the
         // client can split the response into a collapsible reasoning section and the
@@ -231,6 +303,7 @@ export class GenerationService {
               'Answer the user based on what they asked. If you cannot look up live data, ' +
               'tell them exactly what went wrong and what they should try instead.',
             prompt: String(lastUserContent),
+            abortSignal: abortController.signal,
           });
           for await (const chunk of fallbackResult.textStream) {
             if (chunk) response.write(chunk);
@@ -248,7 +321,7 @@ export class GenerationService {
           };
         }
 
-        const result = streamText(streamInput);
+        const result = streamText({ ...streamInput, abortSignal: abortController.signal });
         for await (const chunk of result.textStream) {
           if (chunk) response.write(chunk);
         }
@@ -256,9 +329,18 @@ export class GenerationService {
 
       response.end();
     } catch (err) {
+      // Client disconnected — abort is expected, nothing to send.
+      if (abortController.signal.aborted) return;
       if (!response.headersSent) throw err;
       this.logger.error(`[generateStream] Error after headers sent: ${(err as Error).message}`);
+      try {
+        response.write('\n\n[error] The assistant encountered an error. Please try again.');
+      } catch {
+        /* response already closed */
+      }
       response.end();
+    } finally {
+      response.off('close', onClose);
     }
   }
 
@@ -269,6 +351,16 @@ export class GenerationService {
     description: string | undefined,
     response: Response
   ): Promise<void> {
+    // Ingestion creates records — require write permission (H3).
+    if (!(await this.resolveCanWrite(baseId))) {
+      throw new ForbiddenException('You do not have write access to ingest data into this base.');
+    }
+
+    // Abort the ingestion agent when the client disconnects (M1).
+    const abortController = new AbortController();
+    const onClose = () => abortController.abort();
+    response.on('close', onClose);
+
     try {
       const config = await this.aiConfigService.getAIConfig(baseId);
       const modelKey = getTaskModelKey(config, Task.Coding);
@@ -294,7 +386,12 @@ export class GenerationService {
 
       response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
 
-      const result = await runIngestionAgent(modelInstance, { prompt });
+      const result = await runIngestionAgent(
+        modelInstance,
+        { prompt },
+        true,
+        abortController.signal
+      );
 
       let totalText = 0;
       for await (const chunk of result.textStream) {
@@ -309,9 +406,17 @@ export class GenerationService {
 
       response.end();
     } catch (err) {
+      if (abortController.signal.aborted) return;
       if (!response.headersSent) throw err;
       this.logger.error(`[ingestStream] Error after headers sent: ${(err as Error).message}`);
+      try {
+        response.write('\n\n[error] Ingestion failed. Please try again.');
+      } catch {
+        /* response already closed */
+      }
       response.end();
+    } finally {
+      response.off('close', onClose);
     }
   }
 

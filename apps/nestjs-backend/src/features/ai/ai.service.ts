@@ -212,12 +212,19 @@ export class AiService {
     return this.mastraClientService.createThread(resourceId, agentId, title);
   }
 
-  getThread(threadId: string): Promise<IMastraThread | null> {
-    return this.mastraClientService.getThread(threadId);
+  getThread(threadId: string, agentId?: string): Promise<IMastraThread | null> {
+    return this.mastraClientService.getThread(threadId, agentId);
   }
 
-  deleteThread(threadId: string): Promise<void> {
-    return this.mastraClientService.deleteThread(threadId);
+  getThreadMessages(
+    threadId: string,
+    agentId: string
+  ): Promise<{ role: 'user' | 'assistant'; content: string }[]> {
+    return this.mastraClientService.getThreadMessages(threadId, agentId);
+  }
+
+  deleteThread(threadId: string, agentId?: string): Promise<void> {
+    return this.mastraClientService.deleteThread(threadId, agentId);
   }
 
   listThreads(resourceId: string): Promise<IMastraThread[]> {

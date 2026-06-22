@@ -59,6 +59,13 @@ export const envValidationSchema = Joi.object({
   }),
 
   PASSWORD_LOGIN_DISABLED: Joi.string().equal('true').optional(),
+
+  // Mastra AI service — base URL and shared bearer key for server-to-server auth.
+  // The key is optional so existing deployments keep booting; when set, the
+  // backend authenticates to Mastra with it. A runtime warning is logged in
+  // production if it is missing (see MastraClientService).
+  MASTRA_URL: Joi.string().uri().default('http://localhost:4111'),
+  MASTRA_API_KEY: Joi.string().optional(),
 })
   .or('PRISMA_META_DATABASE_URL', 'PRISMA_DATABASE_URL', 'DATABASE_URL')
   .messages({

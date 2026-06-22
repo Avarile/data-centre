@@ -3,13 +3,14 @@ import {
   aiGenerateStream,
   deleteAiThread,
   deleteChatFile,
+  getAiThreadMessages,
   getSignature,
   listChatFiles,
   notify,
   saveChatFile,
   UploadType,
 } from '@teable/openapi';
-import type { IChatFileVo } from '@teable/openapi';
+import type { IAiThreadMessage, IChatFileVo } from '@teable/openapi';
 import { ReactQueryKeys } from '@teable/sdk';
 import { useIsTouchDevice, useSession } from '@teable/sdk/hooks';
 import { cn } from '@teable/ui-lib/shadcn';
@@ -130,21 +131,37 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
     if (!userId || hasRestoredThreadRef.current) return;
     hasRestoredThreadRef.current = true;
     if (!selectedAgentId) return;
+
+    let stored: string | null = null;
     try {
-      const stored = localStorage.getItem(`chat-thread:${baseId}:${userId}`);
-      if (stored) {
-        setThreadId(stored);
-        setMessages([
-          {
-            role: 'assistant',
-            content: t('ai.chat.resumedSession', '↩ Resumed previous session'),
-            isDivider: true,
-          },
-        ]);
-      }
+      stored = localStorage.getItem(`chat-thread:${baseId}:${userId}`);
     } catch {
-      // localStorage unavailable
+      return; // localStorage unavailable
     }
+    if (!stored) return;
+
+    setThreadId(stored);
+    const divider: IMessage = {
+      role: 'assistant',
+      content: t('ai.chat.resumedSession', '↩ Resumed previous session'),
+      isDivider: true,
+    };
+
+    // Hydrate prior messages from Mastra memory (M3); fall back to just the divider.
+    void (async () => {
+      try {
+        const res = await getAiThreadMessages(baseId, stored, selectedAgentId);
+        if (!res.ok) {
+          setMessages([divider]);
+          return;
+        }
+        const history = (await res.json()) as IAiThreadMessage[];
+        const mapped: IMessage[] = history.map((m) => ({ role: m.role, content: m.content }));
+        setMessages([...mapped, divider]);
+      } catch {
+        setMessages([divider]);
+      }
+    })();
   }, [baseId, userId, selectedAgentId, t]);
 
   // Persist selectedAgentId to localStorage
@@ -333,10 +350,11 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
           {
             messages: apiMessages,
             fileTokens: fileTokens.length ? fileTokens : undefined,
+            // resourceId is derived server-side from the authenticated session;
+            // the client no longer sends it (prevents memory hijacking — H1).
             ...(selectedAgentId && userId
               ? {
                   agentId: selectedAgentId,
-                  resourceId: userId,
                   ...(threadId ? { threadId } : {}),
                 }
               : {}),
@@ -415,7 +433,7 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
 
     if (threadId) {
       try {
-        await deleteAiThread(baseId, threadId);
+        await deleteAiThread(baseId, threadId, selectedAgentId);
       } catch {
         // best-effort — clear locally regardless
       }
@@ -438,7 +456,7 @@ export const ChatPanel = ({ baseId }: IChatPanelProps) => {
     setMessages([]);
     setIsStreaming(false);
     setIsThinking(false);
-  }, [baseId, threadId, userId]);
+  }, [baseId, threadId, userId, selectedAgentId]);
 
   const handleAgentChange = useCallback(
     (agentId: string | undefined) => {

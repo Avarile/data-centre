@@ -71,3 +71,11 @@
 {"type":"edit","file":"/home/avarile/Documents/codeRepo/data-centre/apps/mastra-ai/src/mastra/agents/knowledge-agent-non-rag.ts","timestamp":1780580117220,"sessionId":null}
 {"type":"edit","file":"/home/avarile/Documents/codeRepo/data-centre/apps/mastra-ai/src/mastra/tools/db-query/contacts/contact-service.ts","timestamp":1780580939187,"sessionId":null}
 {"type":"edit","file":"/home/avarile/Documents/codeRepo/data-centre/apps/mastra-ai/src/mastra/tools/db-query/db-create-tools.ts","timestamp":1780581157964,"sessionId":null}
+{"type":"edit","file":"/home/avarile/Documents/codeRepo/data-centre/apps/nestjs-backend/src/features/ai/service/mastra-client.service.ts","timestamp":1782091252376,"sessionId":null}
+{"type":"edit","file":"/home/avarile/Documents/codeRepo/data-centre/apps/nestjs-backend/src/features/ai/service/generation.service.ts","timestamp":1782091259560,"sessionId":null}
+{"type":"edit","file":"/home/avarile/Documents/codeRepo/data-centre/apps/nestjs-backend/src/features/ai/service/generation.service.ts","timestamp":1782091264564,"sessionId":null}
+{"type":"edit","file":"/home/avarile/Documents/codeRepo/data-centre/apps/nestjs-backend/src/features/ai/ai.service.ts","timestamp":1782091271874,"sessionId":null}
+{"type":"edit","file":"/home/avarile/Documents/codeRepo/data-centre/apps/nestjs-backend/src/features/ai/ai.controller.ts","timestamp":1782091291086,"sessionId":null}
+{"type":"edit","file":"/home/avarile/Documents/codeRepo/data-centre/packages/openapi/src/ai/thread.ts","timestamp":1782091300177,"sessionId":null}
+{"type":"edit","file":"/home/avarile/Documents/codeRepo/data-centre/apps/nextjs-app/src/features/app/blocks/table/chat-panel/ChatPanel.tsx","timestamp":1782091305222,"sessionId":null}
+{"type":"edit","file":"/home/avarile/Documents/codeRepo/data-centre/apps/nextjs-app/src/features/app/blocks/table/chat-panel/ChatPanel.tsx","timestamp":1782091322458,"sessionId":null}
