@@ -1,9 +1,11 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { CellFormat, FieldKeyType, FieldType, type IFilterSet, type ISortItem } from '@teable/core';
+import { CellFormat, FieldKeyType, FieldType } from '@teable/core';
+import type { IFilterSet, ISortItem } from '@teable/core';
 import { ArrowUpRight, Code2, Copy, Check, Loader2, MagicAi, Key } from '@teable/icons';
 import {
   createAccessToken,
   getFields,
+  getRecords,
   getTableById,
   type CreateAccessTokenVo,
   type IQueryBaseRo,
@@ -42,231 +44,13 @@ import { CopyButton } from '@/features/app/components/CopyButton';
 import { useBaseResource } from '@/features/app/hooks/useBaseResource';
 import type { IBaseResourceTable } from '@/features/app/hooks/useBaseResource';
 import { tableConfig } from '@/features/i18n/table.config';
-
-interface IFieldInfo {
-  id: string;
-  name: string;
-  type: string;
-  description?: string;
-  options?: unknown;
-  isPrimary?: boolean;
-  isComputed?: boolean;
-}
-
-const getFieldTypeDescription = (type: FieldType, options?: unknown): string => {
-  switch (type) {
-    case FieldType.SingleLineText:
-      return 'Single line text';
-    case FieldType.LongText:
-      return 'Long text / Rich text';
-    case FieldType.Number:
-      return 'Number';
-    case FieldType.SingleSelect: {
-      const opts = options as { choices?: { name: string }[] };
-      const choices = opts?.choices?.map((c) => c.name).join(', ') || '';
-      return choices ? `Single select (options: ${choices})` : 'Single select';
-    }
-    case FieldType.MultipleSelect: {
-      const opts = options as { choices?: { name: string }[] };
-      const choices = opts?.choices?.map((c) => c.name).join(', ') || '';
-      return choices ? `Multiple select (options: ${choices})` : 'Multiple select';
-    }
-    case FieldType.Checkbox:
-      return 'Checkbox (true/false)';
-    case FieldType.Date:
-      return 'Date/Time';
-    case FieldType.Attachment:
-      return 'File attachments';
-    case FieldType.Link:
-      return 'Link to another table';
-    case FieldType.Formula:
-      return 'Computed formula field';
-    case FieldType.Rollup:
-    case FieldType.ConditionalRollup:
-      return 'Rollup (aggregation from linked records)';
-    case FieldType.User:
-      return 'User reference';
-    case FieldType.CreatedTime:
-      return 'Created time (auto-generated)';
-    case FieldType.LastModifiedTime:
-      return 'Last modified time (auto-generated)';
-    case FieldType.CreatedBy:
-      return 'Created by (auto-generated)';
-    case FieldType.LastModifiedBy:
-      return 'Last modified by (auto-generated)';
-    case FieldType.AutoNumber:
-      return 'Auto-incrementing number';
-    case FieldType.Rating:
-      return 'Rating (1-5 stars)';
-    case FieldType.Button:
-      return 'Button (trigger actions)';
-    default:
-      return type;
-  }
-};
-
-const TOKEN_PLACEHOLDER = '<YOUR_API_TOKEN>';
-
-const generateAIContext = (
-  tableName: string,
-  tableDescription: string | undefined,
-  fields: IFieldInfo[],
-  baseUrl: string,
-  tableId: string,
-  token?: string
-): string => {
-  const displayToken = token || TOKEN_PLACEHOLDER;
-  const fieldDescriptions = fields
-    .map((field) => {
-      const typeDesc = getFieldTypeDescription(field.type as FieldType, field.options);
-      const primary = field.isPrimary ? ' [PRIMARY]' : '';
-      const computed = field.isComputed ? ' [READ-ONLY]' : '';
-      const desc = field.description ? ` - ${field.description}` : '';
-      return `  - "${field.name}" [id: ${field.id}] (${typeDesc})${primary}${computed}${desc}`;
-    })
-    .join('\n');
-
-  const editableFields = fields
-    .filter((f) => !f.isComputed)
-    .map((f) => `"${f.name}"`)
-    .join(', ');
-
-  return `# Table: ${tableName}
-${tableDescription ? `\nDescription: ${tableDescription}\n` : ''}
-## API Operations
-
-### 1. Read Records (GET)
-\`\`\`bash
-curl -X GET "${baseUrl}/api/table/${tableId}/record?fieldKeyType=name" \\
-  -H "Authorization: Bearer ${displayToken}"
-\`\`\`
-
-#### Pagination
-Use \`skip\` and \`take\` parameters:
-- \`take\`: Number of records to return (default: 100, max: 1000)
-- \`skip\`: Number of records to skip
-
-\`\`\`bash
-# Get 20 records, starting from the 41st record (page 3)
-curl "${baseUrl}/api/table/${tableId}/record?take=20&skip=40&fieldKeyType=name" \\
-  -H "Authorization: Bearer ${displayToken}"
-\`\`\`
-
-#### Filtering
-Use the \`filter\` parameter with a JSON object.
-
-**⚠️ Important: The \`fieldId\` in filter/orderBy MUST use the actual field ID (e.g., "fldXXXX"), not the field name.**
-
-\`\`\`bash
-# Filter records - use field ID from the Fields section above
-curl "${baseUrl}/api/table/${tableId}/record?fieldKeyType=name" \\
-  --data-urlencode 'filter={"conjunction":"and","filterSet":[{"fieldId":"fldXXXXXXX","operator":"is","value":"Active"}]}' \\
-  -H "Authorization: Bearer ${displayToken}"
-\`\`\`
-
-**Filter Operators**:
-- Text: \`is\`, \`isNot\`, \`contains\`, \`doesNotContain\`, \`isEmpty\`, \`isNotEmpty\`
-- Number: \`is\`, \`isNot\`, \`isGreater\`, \`isLess\`, \`isGreaterEqual\`, \`isLessEqual\`
-- Date: \`is\`, \`isBefore\`, \`isAfter\`, \`isWithin\`
-
-#### Sorting
-Use the \`orderBy\` parameter.
-
-**⚠️ Important: The \`fieldId\` in orderBy MUST use the actual field ID (e.g., "fldXXXX"), not the field name.**
-
-\`\`\`bash
-# Sort by a field - use field ID from the Fields section above
-curl "${baseUrl}/api/table/${tableId}/record?fieldKeyType=name" \\
-  --data-urlencode 'orderBy=[{"fieldId":"fldXXXXXXX","order":"desc"}]' \\
-  -H "Authorization: Bearer ${displayToken}"
-\`\`\`
-
-#### Field Selection (Projection)
-Use the \`projection\` parameter to return only specific fields:
-\`\`\`bash
-# Only return "Name" and "Email" fields
-curl "${baseUrl}/api/table/${tableId}/record?fieldKeyType=name&projection=Name&projection=Email" \\
-  -H "Authorization: Bearer ${displayToken}"
-\`\`\`
-
-#### Searching
-Use the \`search\` parameter:
-\`\`\`bash
-# Search for "john" in all fields
-curl "${baseUrl}/api/table/${tableId}/record?search=john&fieldKeyType=name" \\
-  -H "Authorization: Bearer ${displayToken}"
-\`\`\`
-
-### 2. Create Record (POST)
-\`\`\`bash
-curl -X POST "${baseUrl}/api/table/${tableId}/record" \\
-  -H "Authorization: Bearer ${displayToken}" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "fieldKeyType": "name",
-    "records": [
-      {
-        "fields": {
-          // Editable fields: ${editableFields || 'None'}
-        }
-      }
-    ]
-  }'
-\`\`\`
-
-### 3. Update Record (PATCH)
-\`\`\`bash
-curl -X PATCH "${baseUrl}/api/table/${tableId}/record/{recordId}" \\
-  -H "Authorization: Bearer ${displayToken}" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "fieldKeyType": "name",
-    "record": {
-      "fields": {
-        // Include only fields you want to update
-      }
-    }
-  }'
-\`\`\`
-
-### 4. Delete Record (DELETE)
-\`\`\`bash
-curl -X DELETE "${baseUrl}/api/table/${tableId}/record/{recordId}" \\
-  -H "Authorization: Bearer ${displayToken}"
-\`\`\`
-
----
-
-## API Configuration
-- **Base URL**: ${baseUrl}
-- **Table ID**: ${tableId}
-- **API Token**: ${displayToken}
-- **Endpoint**: \`${baseUrl}/api/table/${tableId}/record\`
-
-## Authentication
-All requests require the \`Authorization\` header:
-\`\`\`
-Authorization: Bearer ${displayToken}
-\`\`\`
-
----
-
-## Fields
-${fieldDescriptions}
-
----
-
-## Notes for AI
-- Fields marked [PRIMARY] are the main identifier field
-- Fields marked [READ-ONLY] are computed and cannot be directly modified
-- Use \`fieldKeyType=name\` to reference fields by their display name in request/response body
-- **Important**: \`filter\` and \`orderBy\` parameters MUST use field IDs (the [id: fldXXX] shown above), not field names
-- Dates should be in ISO 8601 format (e.g., "2024-01-15T10:30:00Z")
-- For select fields, use the exact option names listed above
-- For link fields, provide an array of record IDs from the linked table
-- Response format: \`{ "records": [{ fields: { ... } }] }\`
-`;
-};
+import {
+  generateAIContext,
+  getLinkOptions,
+  type ForeignMap,
+  type IFieldInfo,
+  type IForeignSample,
+} from './ai-context.utils';
 
 // Token Section Component
 const TokenSection = ({
@@ -548,6 +332,40 @@ export const APIDialogContent = ({ onOpenChange: _onOpenChange }: APIDialogConte
     }));
   }, [fieldsData]);
 
+  // Distinct foreign tables referenced by this table's link fields.
+  const foreignTableIds = useMemo(() => {
+    const ids = fields
+      .filter((f) => (f.type as FieldType) === FieldType.Link)
+      .map((f) => getLinkOptions(f.options).foreignTableId)
+      .filter((id): id is string => Boolean(id));
+    return Array.from(new Set(ids));
+  }, [fields]);
+
+  // Fetch a couple of real records (and the name) from each referenced table so
+  // link references in the example record are concrete and copy-paste runnable.
+  const { data: foreignMap = {} } = useQuery<ForeignMap>({
+    queryKey: ['api-dialog-foreign-samples', baseId, foreignTableIds],
+    queryFn: async () => {
+      const entries = await Promise.all(
+        foreignTableIds.map(async (ftId) => {
+          const [recordsRes, tableRes] = await Promise.all([
+            getRecords(ftId, { take: 2, fieldKeyType: FieldKeyType.Name }).then((r) => r.data),
+            getTableById(baseId, ftId)
+              .then((r) => r.data)
+              .catch(() => undefined),
+          ]);
+          const samples: IForeignSample[] = recordsRes.records.map((rec) => ({
+            id: rec.id,
+            title: rec.name || rec.id,
+          }));
+          return [ftId, { tableName: tableRes?.name ?? ftId, samples }] as const;
+        })
+      );
+      return Object.fromEntries(entries);
+    },
+    enabled: Boolean(baseId) && foreignTableIds.length > 0,
+  });
+
   const aiContext = useMemo(() => {
     if (!tableInfo) return '';
     return generateAIContext(
@@ -556,9 +374,10 @@ export const APIDialogContent = ({ onOpenChange: _onOpenChange }: APIDialogConte
       fields,
       currentUrl,
       tableId,
+      foreignMap,
       generatedToken?.token
     );
-  }, [tableInfo, fields, currentUrl, tableId, generatedToken]);
+  }, [tableInfo, fields, currentUrl, tableId, foreignMap, generatedToken]);
 
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(aiContext);
