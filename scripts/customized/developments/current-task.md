@@ -1,59 +1,77 @@
-Goal: 
-1. Create an agent to ingest a given file(or files), and target table:
-   1. First understand the table schema(if there are cascadin creation, understand the related table is required as well).
-   2. Then ingest the files, try to piece the info together, for those data cannot fit in the given table, record them.
-   3. Then create those records accordingly. 
-   4. After creation, let the user know there are records that cannot be created, and list those related info.
-2. This agent is in apps/nestjs-backend/src/features/ai/agents/ingestion-agent.ts
+  TL;DR — The "AI doc" is a deterministic template, not LLM-generated
 
-
-
-What the agent does
-
-  A conversational agent for managing and querying the knowledge base. It handles two distinct layers:
-
-  1. Index layer (via index-tools.ts) — CRUD on index registrations (list, get, create, update, soft-delete, restore)
-  2. Knowledge layer (via query-tools.ts) — Semantic search against active indexes, either single-index or fan-out across all
-
-  On the "skill" question
-
-  My recommendation: no separate skill needed. Here's why:
-
-  - A Mastra "skill" would add a layer of abstraction over tools the agent already calls directly. The tools themselves are already
-  well-scoped with clear descriptions and typed inputs/outputs.
-  - Skills shine when you want to expose a reusable capability to other agents or compose complex multi-step logic as a single callable unit
-  (e.g. "ingest + chunk + embed" as one skill). Since this agent is the knowledge manager, wrapping its own tools in a skill would just be
-  redundant indirection.
-  - If in the future you add an ingestion pipeline (chunking + embedding + upsert), that would be a natural skill — but that's not in scope
-  here.
-
-  Verdict: skip the skill for now. The tools are the atomic units; the agent's prompt is the behavioral layer.
-
-  Prompt design (outline)
-
-  The system prompt will cover:
-  1. Role — "You are the Knowledge Manager. You own all knowledge indexes and their content."
-  2. Workflow for queries — Always call list-indexes first if the target index is unknown; prefer vector-query for known domains,
-  all-knowledge-query for cross-domain questions.
-  3. Workflow for index management — Confirm destructive operations (delete) before executing; use soft-delete, never permanent.
-  4. Memory use — Track currentTopic, recentSources, and lastIngestedMaterialId in working memory; surface citeSources and responseStyle
-  preferences.
-  5. Response format — Cite source metadata when citeSources=true; respect responseStyle preference.
-  6. Guard rails — Never make up index names; always verify with get-index before acting on a name provided by the user.
-
-  What I'll implement
-
-  knowledge-agent.ts
-    - Agent definition with:
-      - model: claude-sonnet-4-6
-      - tools: all 7 (listIndexes, getIndex, createIndex, updateIndex, deleteIndex, restoreIndex, vectorQuery, allKnowledgeQuery)
-      - memory: knowledgeAgentMemory
-      - comprehensive system prompt
-    - Register in src/mastra/index.ts
+  Despite the "AI Context" / "MagicAi" branding, no AI model is involved anywhere. The document is assembled entirely client-side by a pure string-template function (generateAIContext) at
+  APIDialogContent.tsx:110-269. It's "AI" in purpose (designed to be pasted into ChatGPT/Claude), not in mechanism.
 
   ---
-  One thing to confirm before I write it: The query-tools.ts only has retrieval — there is no document ingestion tool (chunk → embed →
-  upsert). Should the knowledge agent be read+manage only (current tools cover this fully), or do you want ingestion capability too? If yes,
-  that's where a skill or new tool would live.
-  
-  Otherwise, shall I proceed with the read+manage-only design above?
+  How it actually works
+
+  1. Entry point & lazy loading (APIDialog.tsx)
+
+  - APIDialog renders a shadcn Dialog. The heavy content is code-split via next/dynamic (ssr: false, skeleton fallback) — APIDialog.tsx:68-74.
+  - Content only mounts when open ({isOpen && <APIDialogContent />}, line 111), so fetches don't fire until the dialog is opened.
+
+  2. Data acquisition (APIDialogContent.tsx:481-549)
+
+  The component resolves baseId/tableId/viewId from useBaseResource(), then runs two React Query fetches:
+  - Table info — getTableById(baseId, tableId) → tableInfo.name, tableInfo.description (lines 494-498)
+  - Fields — getFields(tableId) → array mapped into IFieldInfo[] capturing id, name, type, description, options, isPrimary, isComputed (lines 501-549)
+
+  currentUrl is captured from window.location.origin in an effect (lines 489-491) to build absolute curl examples.
+
+  3. Optional token generation (lines 507-536)
+
+  - Clicking "Generate Token" opens an AlertDialog confirmation, then createTokenMutation calls createAccessToken(...).
+  - Scopes are hardcoded: table|read, field|read, record|read/create/update/delete, scoped to baseIds:[baseId], expiry +1 year (lines 510-526).
+  - On success the real token replaces the <YOUR_API_TOKEN> placeholder in the doc.
+
+  4. Document assembly — generateAIContext() (lines 110-269)
+
+  This is the core. A pure function returning one big template literal. Its logic:
+
+  - getFieldTypeDescription() (lines 56-106) maps each FieldType enum to a human-readable string; for SingleSelect/MultipleSelect it inlines the choice names from options.
+  - Field list (lines 119-127): each field → - "Name" [id: fldXXX] (TypeDesc) [PRIMARY] [READ-ONLY] - description. The [id: ...] is deliberately exposed because filter/orderBy require field
+  IDs.
+  - editableFields (lines 129-132): non-computed field names, injected as a comment hint in the POST example.
+  - Then it interpolates everything into static Markdown sections: Read/Pagination/Filter/Sort/Projection/Search, Create/Update/Delete curl blocks, an API Configuration block,
+  Authentication, the Fields list, and a "Notes for AI" section with guidance (e.g., "filter/orderBy MUST use field IDs", ISO-8601 dates, link fields take record-ID arrays).
+
+  The token parameter defaults to TOKEN_PLACEHOLDER = '<YOUR_API_TOKEN>' (line 108) so the doc is fully usable before any token exists.
+
+  5. Reactivity & rendering (lines 551-621)
+
+  - aiContext is a useMemo over [tableInfo, fields, currentUrl, tableId, generatedToken] — it re-renders the moment any input changes (e.g., token generated) (lines 551-561).
+  - Displayed via <MarkdownPreview> (from @teable/sdk, packages/sdk/src/components/markdown-editor/MarkDownPreview.tsx) inside a ScrollArea.
+  - "Copy AI Doc" writes the raw markdown string to clipboard via navigator.clipboard.writeText (lines 563-567).
+
+  6. The "Advanced" tab (AdvancedQueryPanel, lines 341-475)
+
+  Separate from the doc — an interactive query builder (ViewBuilder, SearchBuilder, FilterBuilder, OrderByBuilder, format toggles) wrapped in StandaloneViewProvider, with live PreviewScript
+  + PreviewTable. It does not feed into generateAIContext; it's a parallel, live-preview path.
+
+  ---
+  Data flow summary
+
+  useBaseResource → baseId/tableId/viewId
+          │
+          ├── getTableById ─► tableInfo (name, description)
+          ├── getFields ────► IFieldInfo[]
+          ├── window.origin ► currentUrl
+          └── createAccessToken (optional) ► generatedToken.token
+                                    │
+                                    ▼
+          generateAIContext(...)  ── pure template, no network/AI
+                                    │
+                                    ▼
+          useMemo(aiContext) ─► <MarkdownPreview> + Copy-to-clipboard
+
+  Observations worth noting
+
+  - Strengths: zero backend/LLM cost, deterministic, instantly reactive, security-conscious (placeholder token, 1-year scoped token, explicit field-ID warnings repeated 3×).
+  - Constraints: the template is hardcoded English-prose (the curl bodies and "Notes for AI" are not run through i18n — only the surrounding UI chrome is), so the document itself isn't
+  localized. Field-type coverage depends on the getFieldTypeDescription switch staying in sync with FieldType.
+  - The recent commit 352148d "updated the modal that is too small for the ai doc" corresponds to the h-[90vh] max-w-7xl sizing in APIDialog.tsx:103.
+
+  ---
+  This was a read-only analysis — I haven't proposed or made any code changes. If you'd like, I can take this further (e.g., a plan to localize the doc body, move generation server-side,
+  add field-type coverage, or actually run an LLM to summarize the table). Let me know which direction and I'll plan it out.

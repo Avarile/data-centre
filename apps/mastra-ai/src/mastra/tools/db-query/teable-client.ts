@@ -1,6 +1,6 @@
 import { env } from '../../env.js';
 
-const BASE_URL = env.TEABLE_BASE_URL;
+export const BASE_URL = env.TEABLE_BASE_URL;
 
 export interface TeableRecord<T = Record<string, unknown>> {
   id: string;
@@ -17,7 +17,7 @@ export interface ListParams {
   search?: string;
 }
 
-function authHeaders(): Record<string, string> {
+export function authHeaders(): Record<string, string> {
   return {
     Authorization: `Bearer ${env.CYBERNETICS_APP_TOKEN}`,
     'Content-Type': 'application/json',

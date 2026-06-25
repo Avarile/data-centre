@@ -6,6 +6,7 @@ import { PinoLogger } from '@mastra/loggers';
 import { z } from 'zod';
 import { knowledgeRAGAgent } from './agents/knowledge-agent-rag';
 import { knowledgeNONRAGAgent } from './agents/knowledge-agent-non-rag';
+import { knowledgeReactiveAgent } from './agents/knowledge-agent-Reactive';
 import { createJob, getJob, startJob } from './rag/ingest-jobs';
 import { runAllMigrations } from './db/migrations';
 import { env, isDev } from './env';
@@ -112,7 +113,7 @@ const serverConfig = {
 
 export const mastra = new Mastra({
   workflows: {},
-  agents: { knowledgeRAGAgent, knowledgeNONRAGAgent },
+  agents: { knowledgeRAGAgent, knowledgeNONRAGAgent, knowledgeReactiveAgent },
   scorers: {},
   logger: new PinoLogger({
     name: 'Mastra',
