@@ -1,6 +1,6 @@
 'use client';
 
-import type { UIMessage } from 'ai';
+import type { TextUIPart, UIMessage } from 'ai';
 import { ArrowDownIcon, DownloadIcon } from 'lucide-react';
 import type { ComponentProps } from 'react';
 import { useCallback } from 'react';
@@ -92,7 +92,8 @@ export const ConversationScrollButton = ({
 
 const getMessageText = (message: UIMessage): string =>
   message.parts
-    .filter((part) => part.type === 'text')
+    // A type predicate, so the union actually narrows to the text variant.
+    .filter((part): part is TextUIPart => part.type === 'text')
     .map((part) => part.text)
     .join('');
 

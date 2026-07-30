@@ -1,12 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
+import type { IUsageVo } from '@teable/openapi';
 import { getBaseUsage, BillingProductLevel, UsageFeatureLimit } from '@teable/openapi';
 import { useBaseId } from '@teable/sdk/hooks';
 import { useIsReadOnlyPreview } from '@teable/sdk/hooks/use-is-readonly-preview';
 import { useIsCloud } from './useIsCloud';
 import { useIsEE } from './useIsEE';
 
-// Returned on self-hosted (non-EE, non-Cloud) instances — all features unlocked
-const SELF_HOSTED_USAGE = {
+// Returned on self-hosted (non-EE, non-Cloud) instances — all features unlocked.
+// Typed as IUsageVo so this constant cannot drift from the wire schema and
+// narrow the hook's return type below what callers expect.
+const SELF_HOSTED_USAGE: IUsageVo = {
   level: BillingProductLevel.Enterprise,
   limit: {
     [UsageFeatureLimit.FieldAIEnable]: true,

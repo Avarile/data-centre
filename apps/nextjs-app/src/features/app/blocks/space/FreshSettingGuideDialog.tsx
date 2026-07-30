@@ -60,7 +60,7 @@ export const FreshSettingGuideDialog = () => {
               height={240}
             />
             <h1 className="text-base-foreground justify-start self-stretch pt-4 text-center font-['Inter'] text-xl font-semibold leading-7">
-              {t('admin.tips.thankYouForUsingTeable', { brandName })}
+              {t('admin.tips.thankYouForUsingCybernetics', { brandName })}
             </h1>
             <p className="justify-start self-stretch pt-[6px] text-center font-['Inter'] text-sm font-normal leading-tight text-muted-foreground">
               {t('admin.tips.pleaseGoToConfiguration')}

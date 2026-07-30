@@ -1,0 +1,27 @@
+this is a bug when I clear the text in the search box of the `Knowledge Graph` component, analysis the codes related to it, findout the root cause(which is apparant, a null pointer), and provide me a fix
+
+## Error Type
+Runtime TypeError
+
+## Error Message
+undefined is not iterable (cannot read property Symbol(Symbol.iterator))
+
+
+    at Array.from (<anonymous>:null:null)
+    at A (file:///home/avarile/Documents/codeRepo/cybernetics-data-centre/apps/nextjs-app/.next/dev/static/chunks/node_modules__pnpm_528cf887._.js:34839:22)
+    at U (file:///home/avarile/Documents/codeRepo/cybernetics-data-centre/apps/nextjs-app/.next/dev/static/chunks/node_modules__pnpm_528cf887._.js:34803:17)
+    at <unknown> (file:///home/avarile/Documents/codeRepo/cybernetics-data-centre/apps/nextjs-app/.next/dev/static/chunks/node_modules__pnpm_528cf887._.js:35191:32)
+    at Map.forEach (<anonymous>:null:null)
+    at <unknown> (file:///home/avarile/Documents/codeRepo/cybernetics-data-centre/apps/nextjs-app/.next/dev/static/chunks/node_modules__pnpm_528cf887._.js:35191:19)
+    at commitHookEffectListMount (file:///home/avarile/Documents/codeRepo/cybernetics-data-centre/apps/nextjs-app/.next/dev/static/chunks/c21e6_react-dom_cjs_react-dom_development_db335baa.js:19625:42)
+    at commitLayoutEffectOnFiber (file:///home/avarile/Documents/codeRepo/cybernetics-data-centre/apps/nextjs-app/.next/dev/static/chunks/c21e6_react-dom_cjs_react-dom_development_db335baa.js:19721:41)
+    at commitLayoutMountEffects_complete (file:///home/avarile/Documents/codeRepo/cybernetics-data-centre/apps/nextjs-app/.next/dev/static/chunks/c21e6_react-dom_cjs_react-dom_development_db335baa.js:20879:25)
+    at commitLayoutEffects_begin (file:///home/avarile/Documents/codeRepo/cybernetics-data-centre/apps/nextjs-app/.next/dev/static/chunks/c21e6_react-dom_cjs_react-dom_development_db335baa.js:20868:21)
+    at commitLayoutEffects (file:///home/avarile/Documents/codeRepo/cybernetics-data-centre/apps/nextjs-app/.next/dev/static/chunks/c21e6_react-dom_cjs_react-dom_development_db335baa.js:20818:13)
+    at commitRootImpl (file:///home/avarile/Documents/codeRepo/cybernetics-data-centre/apps/nextjs-app/.next/dev/static/chunks/c21e6_react-dom_cjs_react-dom_development_db335baa.js:22607:17)
+    at commitRoot (file:///home/avarile/Documents/codeRepo/cybernetics-data-centre/apps/nextjs-app/.next/dev/static/chunks/c21e6_react-dom_cjs_react-dom_development_db335baa.js:22497:17)
+    at performSyncWorkOnRoot (file:///home/avarile/Documents/codeRepo/cybernetics-data-centre/apps/nextjs-app/.next/dev/static/chunks/c21e6_react-dom_cjs_react-dom_development_db335baa.js:22034:13)
+    at flushSyncCallbacks (file:///home/avarile/Documents/codeRepo/cybernetics-data-centre/apps/nextjs-app/.next/dev/static/chunks/c21e6_react-dom_cjs_react-dom_development_db335baa.js:10477:40)
+    at <unknown> (file:///home/avarile/Documents/codeRepo/cybernetics-data-centre/apps/nextjs-app/.next/dev/static/chunks/c21e6_react-dom_cjs_react-dom_development_db335baa.js:21662:33)
+
+Next.js version: 16.1.6 (Turbopack)

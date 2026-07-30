@@ -362,6 +362,7 @@
     "automation": "Автоматизация",
     "authorityMatrix": "Матрица полномочий",
     "design": "Дизайн",
+    "knowledgeGraph": "Граф знаний",
     "adminPanel": "Системное администрирование",
     "license": "Самостоятельная лицензия",
     "instanceId": "ID экземпляра",

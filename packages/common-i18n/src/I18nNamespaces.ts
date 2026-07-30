@@ -3,6 +3,7 @@ import type chart from './locales/en/chart.json';
 import type common from './locales/en/common.json';
 import type dashboard from './locales/en/dashboard.json';
 import type developer from './locales/en/developer.json';
+import type knowledgeGraph from './locales/en/knowledgeGraph.json';
 import type oauth from './locales/en/oauth.json';
 import type plugin from './locales/en/plugin.json';
 import type sdk from './locales/en/sdk.json';
@@ -28,4 +29,5 @@ export interface I18nNamespaces {
   plugin: typeof plugin;
   dashboard: typeof dashboard;
   chart: typeof chart;
+  knowledgeGraph: typeof knowledgeGraph;
 }

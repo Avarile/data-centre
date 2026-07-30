@@ -36,7 +36,7 @@ export const AdminLayout: React.FC<{
     },
     {
       Icon: Zap,
-      label: t('admin.setting.ai.title', 'AI Settings'),
+      label: t('admin.setting.aiSettings'),
       route: '/admin/ai-setting',
       pathTo: '/admin/ai-setting',
     },

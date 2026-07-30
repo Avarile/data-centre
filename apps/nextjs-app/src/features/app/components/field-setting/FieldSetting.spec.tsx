@@ -1,4 +1,4 @@
-import { CellValueType, DbFieldType, FieldType } from '@teable/core';
+import { CellValueType, DbFieldType, FieldType, Relationship } from '@teable/core';
 import { render, screen } from '@/test-utils';
 import { FieldSettingBase } from './FieldSetting';
 import { FieldOperator } from './type';
@@ -37,13 +37,18 @@ describe('FieldSettingBase', () => {
       id: 'fldLookup0000000001',
       name: 'Lookup Child Name',
       type: FieldType.SingleLineText,
-      description: null,
+      // `undefined`, not `null`: the field VO types description as string | undefined.
+      description: undefined,
       options: {},
       isLookup: true,
       lookupOptions: {
+        relationship: Relationship.ManyOne,
         foreignTableId: 'tblForeign000000001',
         linkFieldId: 'fldLink000000000001',
         lookupFieldId: 'fldTarget0000000001',
+        fkHostTableName: 'junction_lookup_child_name',
+        selfKeyName: '__id',
+        foreignKeyName: '__fk_fldLink000000000001',
       },
       cellValueType: CellValueType.String,
       isMultipleCellValue: false,

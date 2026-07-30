@@ -1,17 +1,7 @@
 'use client';
 
 import { useControllableState } from '@radix-ui/react-use-controllable-state';
-import {
-  CircleSmallIcon,
-  MarsIcon,
-  MarsStrokeIcon,
-  NonBinaryIcon,
-  PauseIcon,
-  PlayIcon,
-  TransgenderIcon,
-  VenusAndMarsIcon,
-  VenusIcon,
-} from 'lucide-react';
+import { PauseIcon, PlayIcon } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { createContext, useCallback, useContext, useMemo } from 'react';
 import { cn } from '@/lib/utils';
@@ -29,6 +19,32 @@ import {
 } from 'components/ui/command';
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from 'components/ui/dialog';
 import { Spinner } from 'components/ui/spinner';
+
+/**
+ * lucide-react 0.363.0 predates the Mars/Venus gender glyph set, so these are
+ * rendered as Unicode symbols. Same call shape as the lucide icons they stand in
+ * for, which keeps the switch in VoiceSelectorGender unchanged.
+ */
+interface IGlyphProps {
+  className?: string;
+}
+
+const GenderGlyph = ({ symbol, className }: IGlyphProps & { symbol: string }) => (
+  <span
+    aria-hidden
+    className={cn('inline-flex items-center justify-center leading-none', className)}
+  >
+    {symbol}
+  </span>
+);
+
+const MarsIcon = (props: IGlyphProps) => <GenderGlyph symbol="♂" {...props} />;
+const VenusIcon = (props: IGlyphProps) => <GenderGlyph symbol="♀" {...props} />;
+const TransgenderIcon = (props: IGlyphProps) => <GenderGlyph symbol="⚧" {...props} />;
+const MarsStrokeIcon = (props: IGlyphProps) => <GenderGlyph symbol="⚨" {...props} />;
+const NonBinaryIcon = (props: IGlyphProps) => <GenderGlyph symbol="⚲" {...props} />;
+const VenusAndMarsIcon = (props: IGlyphProps) => <GenderGlyph symbol="⚥" {...props} />;
+const CircleSmallIcon = (props: IGlyphProps) => <GenderGlyph symbol="•" {...props} />;
 
 interface VoiceSelectorContextValue {
   value: string | undefined;

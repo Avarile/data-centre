@@ -595,6 +595,7 @@ export type I18nTranslations = {
             "automation": string;
             "authorityMatrix": string;
             "design": string;
+            "knowledgeGraph": string;
             "adminPanel": string;
             "license": string;
             "instanceId": string;
@@ -1790,6 +1791,54 @@ export type I18nTranslations = {
             "compactDescription": string;
         };
         "only10Records": string;
+    };
+    "knowledgeGraph": {
+        "title": string;
+        "core": string;
+        "unclassified": string;
+        "stats": {
+            "nodes": string;
+            "links": string;
+            "types": string;
+        };
+        "toolbar": {
+            "autoRotate": string;
+            "startRotate": string;
+            "stopRotate": string;
+            "fullscreen": string;
+            "exitFullscreen": string;
+            "resetView": string;
+            "refresh": string;
+        };
+        "legend": {
+            "title": string;
+            "showAll": string;
+            "hidden": string;
+            "allHidden": string;
+        };
+        "search": {
+            "placeholder": string;
+            "noResults": string;
+        };
+        "detail": {
+            "context": string;
+            "type": string;
+            "siblings": string;
+            "created": string;
+            "updated": string;
+            "close": string;
+        };
+        "empty": {
+            "title": string;
+            "description": string;
+        };
+        "truncated": {
+            "banner": string;
+        };
+        "error": {
+            "title": string;
+            "retry": string;
+        };
     };
     "oauth": {
         "add": string;

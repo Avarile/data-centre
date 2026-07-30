@@ -1,0 +1,166 @@
+import type { IGetKnowledgeGraphVo } from '@teable/openapi';
+import { UNCLASSIFIED_TYPE_NODE_ID } from '@teable/openapi';
+import {
+  buildSimulationGraph,
+  isLinkVisible,
+  isNodeVisible,
+  linkEndpointId,
+} from './buildSimulationGraph';
+import { colorForNode, CORE_COLOR, nodeValFor, UNCLASSIFIED_COLOR } from './graphTheme';
+
+const graph: IGetKnowledgeGraphVo = {
+  version: 1,
+  etag: '"kg1-test"',
+  nodes: [
+    { id: 'core', recordId: null, tier: 'core', label: 'core', typeId: null, degree: 2 },
+    { id: 'type:a', recordId: 'recA', tier: 'type', label: 'Alpha', typeId: null, degree: 1 },
+    { id: 'type:b', recordId: 'recB', tier: 'type', label: 'Beta', typeId: null, degree: 1 },
+    { id: 'kn:1', recordId: 'rec1', tier: 'knowledge', label: 'one', typeId: 'type:a', degree: 1 },
+    { id: 'kn:2', recordId: 'rec2', tier: 'knowledge', label: 'two', typeId: 'type:b', degree: 1 },
+  ],
+  links: [
+    { source: 'core', target: 'type:a', tier: 'core-type', value: 1, distance: 260 },
+    { source: 'core', target: 'type:b', tier: 'core-type', value: 1, distance: 260 },
+    { source: 'type:a', target: 'kn:1', tier: 'type-knowledge', value: 1, distance: 70 },
+    { source: 'type:b', target: 'kn:2', tier: 'type-knowledge', value: 1, distance: 70 },
+  ],
+  stats: {
+    typeCount: 2,
+    knowledgeCount: 2,
+    orphanCount: 0,
+    nodeCount: 5,
+    linkCount: 4,
+    truncated: false,
+  },
+};
+
+describe('buildSimulationGraph', () => {
+  it('returns an empty graph for undefined data', () => {
+    expect(buildSimulationGraph(undefined, [])).toEqual({ nodes: [], links: [] });
+  });
+
+  it('passes everything through when nothing is hidden', () => {
+    const result = buildSimulationGraph(graph, []);
+
+    expect(result.nodes).toHaveLength(5);
+    expect(result.links).toHaveLength(4);
+  });
+
+  it('drops a hidden type together with its children and their links', () => {
+    const result = buildSimulationGraph(graph, ['type:a']);
+
+    expect(result.nodes.map((n) => n.id)).toEqual(['core', 'type:b', 'kn:2']);
+    expect(result.links).toHaveLength(2);
+    expect(result.links.every((l) => l.source !== 'type:a' && l.target !== 'type:a')).toBe(true);
+  });
+
+  it('keeps the core node even when every type is hidden', () => {
+    const result = buildSimulationGraph(graph, ['type:a', 'type:b']);
+
+    expect(result.nodes.map((n) => n.id)).toEqual(['core']);
+    expect(result.links).toHaveLength(0);
+  });
+
+  it('clones nodes and links so the query cache cannot be mutated', () => {
+    const result = buildSimulationGraph(graph, []);
+
+    expect(result.nodes[0]).not.toBe(graph.nodes[0]);
+    expect(result.links[0]).not.toBe(graph.links[0]);
+
+    // Simulate what react-force-graph does to what it is handed.
+    result.nodes[0].x = 42;
+    expect(graph.nodes[0]).not.toHaveProperty('x');
+  });
+});
+
+describe('visibility', () => {
+  it('hides the core node and its spokes, and nothing else', () => {
+    const result = buildSimulationGraph(graph, []);
+
+    expect(result.nodes.filter((n) => !isNodeVisible(n)).map((n) => n.id)).toEqual(['core']);
+    expect(result.links.filter((l) => !isLinkVisible(l)).map((l) => l.target)).toEqual([
+      'type:a',
+      'type:b',
+    ]);
+    expect(result.nodes.filter(isNodeVisible)).toHaveLength(4);
+    expect(result.links.filter(isLinkVisible)).toHaveLength(2);
+  });
+
+  it('keeps the core in the simulation graph so the branches stay connected', () => {
+    // Load-bearing: three-forcegraph filters only its render digest by
+    // visibility, so the hidden core still anchors every type branch. If it were
+    // filtered out of graphData instead, each type would become its own
+    // disconnected component.
+    const result = buildSimulationGraph(graph, []);
+
+    expect(result.nodes.some((n) => n.id === 'core')).toBe(true);
+    expect(result.links.some((l) => l.source === 'core')).toBe(true);
+  });
+});
+
+describe('linkEndpointId', () => {
+  it('handles both the pre-tick string and the post-tick node object', () => {
+    expect(linkEndpointId('core')).toBe('core');
+    expect(linkEndpointId({ id: 'type:a' })).toBe('type:a');
+    expect(linkEndpointId(undefined)).toBe('');
+  });
+});
+
+describe('nodeValFor', () => {
+  // Rendered radius is cbrt(nodeVal) * nodeRelSize.
+  const radius = (val: number) => Math.cbrt(val);
+
+  it('keeps the tier hierarchy at every degree, including childless types', () => {
+    const knowledge = radius(nodeValFor('knowledge', 1));
+    const core = radius(nodeValFor('core', 25));
+
+    for (const degree of [0, 1, 5, 6, 7, 25, 40, 500]) {
+      const type = radius(nodeValFor('type', degree));
+      expect(type).toBeGreaterThan(knowledge);
+      expect(type).toBeLessThan(core);
+    }
+  });
+
+  it('grows type nodes monotonically with degree and caps them', () => {
+    expect(nodeValFor('type', 40)).toBeGreaterThan(nodeValFor('type', 10));
+    expect(nodeValFor('type', 500)).toBe(nodeValFor('type', 40));
+  });
+
+  it('falls back to the leaf size for an unknown tier', () => {
+    // An unknown tier returning undefined would make d3 produce NaN positions
+    // and render an empty scene with no error at all.
+    expect(nodeValFor('not-a-tier', 3)).toBe(nodeValFor('knowledge', 3));
+  });
+});
+
+describe('colorForNode', () => {
+  it('uses the fixed core colour', () => {
+    expect(colorForNode({ tier: 'core', id: 'core', typeId: null })).toBe(CORE_COLOR);
+  });
+
+  it('uses the neutral colour for the unclassified bucket and its children', () => {
+    expect(colorForNode({ tier: 'type', id: UNCLASSIFIED_TYPE_NODE_ID, typeId: null })).toBe(
+      UNCLASSIFIED_COLOR
+    );
+    expect(colorForNode({ tier: 'knowledge', id: 'kn:9', typeId: UNCLASSIFIED_TYPE_NODE_ID })).toBe(
+      UNCLASSIFIED_COLOR
+    );
+  });
+
+  it('is stable per type and independent of sibling types', () => {
+    const first = colorForNode({ tier: 'type', id: 'type:a', typeId: null });
+    const again = colorForNode({ tier: 'type', id: 'type:a', typeId: null });
+
+    expect(again).toBe(first);
+    expect(colorForNode({ tier: 'type', id: 'type:b', typeId: null })).not.toBe(first);
+  });
+
+  it('gives a knowledge node its parent type hue at a lower value', () => {
+    const typeColor = colorForNode({ tier: 'type', id: 'type:a', typeId: null });
+    const childColor = colorForNode({ tier: 'knowledge', id: 'kn:1', typeId: 'type:a' });
+
+    const hueOf = (c: string) => c.match(/hsl\((\d+)/)?.[1];
+    expect(hueOf(childColor)).toBe(hueOf(typeColor));
+    expect(childColor).not.toBe(typeColor);
+  });
+});

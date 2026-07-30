@@ -8,30 +8,9 @@ import {
   usePromptInputController,
 } from '../../../../../../components/ai-elements/prompt-input';
 
-// Browser speech recognition types (not in lib.dom.d.ts for all targets)
-interface ISpeechRecognition extends EventTarget {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start(): void;
-  stop(): void;
-  onstart: ((ev: Event) => void) | null;
-  onend: ((ev: Event) => void) | null;
-  onresult: ((ev: ISpeechRecognitionEvent) => void) | null;
-  onerror: ((ev: { error: string }) => void) | null;
-}
-
-interface ISpeechRecognitionEvent extends Event {
-  resultIndex: number;
-  results: SpeechRecognitionResultList;
-}
-
-declare global {
-  interface Window {
-    SpeechRecognition?: new () => ISpeechRecognition;
-    webkitSpeechRecognition?: new () => ISpeechRecognition;
-  }
-}
+// ISpeechRecognition, ISpeechRecognitionEvent and the Window constructors come
+// from src/types.d/speech-recognition.d.ts — declared once globally because more
+// than one module consumes them.
 
 // Strip markdown and emoji from AI output before sending to TTS.
 // Keeps only plain readable prose — tables, code blocks, and decorative

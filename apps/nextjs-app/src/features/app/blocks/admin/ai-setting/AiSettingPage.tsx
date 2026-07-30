@@ -67,7 +67,12 @@ export const AiSettingPage = ({ settingServerData }: IAiSettingPageProps) => {
 
   const onControlChange = ({ disableActions }: { disableActions: string[] }) => {
     mutateUpdateSetting({
-      aiConfig: { ...setting.aiConfig, disableActions },
+      // disableActions lives under aiConfig.capabilities in the schema; writing
+      // it at the top level silently produced a field the server never reads.
+      aiConfig: {
+        ...setting.aiConfig,
+        capabilities: { ...setting.aiConfig?.capabilities, disableActions },
+      },
     } as IUpdateSettingRo);
   };
 
@@ -103,7 +108,7 @@ export const AiSettingPage = ({ settingServerData }: IAiSettingPageProps) => {
 
         {/* AI Feature Enable/Disable Toggles */}
         <AIControlCard
-          disableActions={setting.aiConfig?.disableActions ?? []}
+          disableActions={setting.aiConfig?.capabilities?.disableActions ?? []}
           onChange={onControlChange}
         />
 

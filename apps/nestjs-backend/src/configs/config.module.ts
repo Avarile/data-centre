@@ -8,6 +8,7 @@ import { baseConfig } from './base.config';
 import { bootstrapConfigs, nextJsConfig } from './bootstrap.config';
 import { cacheConfig } from './cache.config';
 import { envValidationSchema } from './env.validation.schema';
+import { knowledgeConfig } from './knowledge.config';
 import { loggerConfig } from './logger.config';
 import { mailConfig } from './mail.config';
 import { oauthConfig } from './oauth.config';
@@ -26,6 +27,7 @@ const configurations = [
   cacheConfig,
   oauthConfig,
   trashConfig,
+  knowledgeConfig,
 ];
 
 @Module({})

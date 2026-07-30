@@ -495,9 +495,10 @@ export const CodeBlockLanguageSelectorTrigger = ({
   className,
   ...props
 }: CodeBlockLanguageSelectorTriggerProps) => (
+  // No `size` prop: this SelectTrigger doesn't take one, and the height and
+  // padding it would have set are already applied via className.
   <SelectTrigger
     className={cn('h-7 border-none bg-transparent px-2 text-xs shadow-none', className)}
-    size="sm"
     {...props}
   />
 );

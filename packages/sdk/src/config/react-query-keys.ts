@@ -35,6 +35,11 @@ export const ReactQueryKeys = {
 
   baseAll: () => ['base-all'] as const,
 
+  knowledgeGraph: (baseId: string) => ['knowledge-graph', baseId] as const,
+
+  knowledgeGraphNode: (baseId: string, nodeId: string) =>
+    ['knowledge-graph-node', baseId, nodeId] as const,
+
   templateList: () => ['template-list'] as const,
 
   templateCategoryList: () => ['template-category-list'] as const,

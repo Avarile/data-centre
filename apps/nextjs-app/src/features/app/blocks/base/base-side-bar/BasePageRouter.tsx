@@ -1,4 +1,4 @@
-import { Lock, MoreHorizontal, Settings, Trash2 } from '@teable/icons';
+import { Lock, MoreHorizontal, Network, Settings, Trash2 } from '@teable/icons';
 import { BillingProductLevel } from '@teable/openapi';
 import { useBasePermission, useIsReadOnlyPreview } from '@teable/sdk/hooks';
 import {
@@ -92,6 +92,17 @@ export const BasePageRouter = () => {
   }[] = useMemo(
     () =>
       [
+        {
+          // Registered here rather than in MoreMenu, which only renders for
+          // `base|update` holders — a read-only viewer must still reach a
+          // read-only graph. `hidden: false` must stay explicit: the annotated
+          // element type has no `hidden` member, so the `.filter` below relies
+          // on every entry carrying the key for inference.
+          href: `/base/${baseId}/knowledge-graph`,
+          label: t('common:noun.knowledgeGraph'),
+          Icon: Network,
+          hidden: false,
+        },
         {
           href: `/base/${baseId}/authority-matrix`,
           label: t('common:noun.authorityMatrix'),
