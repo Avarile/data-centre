@@ -27,7 +27,12 @@ export const KnowledgeNodeDetailPanel = (props: IKnowledgeNodeDetailPanelProps) 
   const created = formatTime(data?.createdTime ?? null);
 
   return (
-    <div className="pointer-events-auto flex max-h-full w-80 flex-col rounded-md border bg-background/95 shadow-lg backdrop-blur">
+    // 28rem puts the context prose at roughly 70 characters per line at
+    // text-xs, the top of the comfortable measure for reading — w-80 gave about
+    // 49, which cost vertical space in a panel that already scrolls. max-w caps
+    // it against the canvas so a narrow viewport shrinks the panel instead of
+    // letting it crowd the search box in the opposite corner.
+    <div className="pointer-events-auto flex max-h-full w-[28rem] max-w-[45%] flex-col rounded-md border bg-background/95 shadow-lg backdrop-blur">
       <div className="flex shrink-0 items-start gap-2 border-b px-3 py-2">
         <div className="min-w-0 flex-1">
           {isLoading ? (

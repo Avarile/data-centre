@@ -9,6 +9,7 @@
   },
   "toolbar": {
     "autoRotate": "Auto rotate",
+    "recenter": "Recenter",
     "startRotate": "回転を開始",
     "stopRotate": "回転を停止",
     "fullscreen": "Fullscreen",

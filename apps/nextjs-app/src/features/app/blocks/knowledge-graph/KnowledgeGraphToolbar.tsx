@@ -1,7 +1,7 @@
 import { RotateCw } from '@teable/icons';
 import type { IKnowledgeGraphStats } from '@teable/openapi';
 import { Button, Separator } from '@teable/ui-lib/shadcn';
-import { Maximize2, Minimize2, Crosshair, Pause, Play } from 'lucide-react';
+import { Maximize2, Minimize2, Crosshair, Pause, Play, Target } from 'lucide-react';
 import { useTranslation } from 'next-i18next';
 import type { RefObject } from 'react';
 import { useFullscreen } from './hooks/useFullscreen';
@@ -12,6 +12,8 @@ interface IKnowledgeGraphToolbarProps {
   visibleLinkCount: number;
   autoRotate: boolean;
   onAutoRotateChange: (on: boolean) => void;
+  /** Frames the core again, without touching the type filters. */
+  onRecenter: () => void;
   onResetView: () => void;
   onRefresh: () => void;
   isRefreshing: boolean;
@@ -30,6 +32,7 @@ export const KnowledgeGraphToolbar = (props: IKnowledgeGraphToolbarProps) => {
     visibleLinkCount,
     autoRotate,
     onAutoRotateChange,
+    onRecenter,
     onResetView,
     onRefresh,
     isRefreshing,
@@ -68,6 +71,17 @@ export const KnowledgeGraphToolbar = (props: IKnowledgeGraphToolbarProps) => {
         >
           {autoRotate ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
           {t('knowledgeGraph:toolbar.autoRotate')}
+        </Button>
+
+        {/*
+          Labelled rather than icon-only, unlike its neighbours to the right:
+          this moves the camera while the Crosshair beside it clears the type
+          filters, and two adjacent reticle glyphs separated only by a tooltip
+          would be a coin toss for the user.
+        */}
+        <Button variant="ghost" size="xs" onClick={onRecenter}>
+          <Target className="size-3.5" />
+          {t('knowledgeGraph:toolbar.recenter')}
         </Button>
 
         <Button

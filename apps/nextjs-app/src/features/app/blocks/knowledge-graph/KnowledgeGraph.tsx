@@ -7,6 +7,7 @@ import { useTranslation } from 'next-i18next';
 import { useCallback, useMemo, useRef } from 'react';
 import { useKnowledgeGraph } from './hooks/useKnowledgeGraph';
 import { useResizeObserver } from './hooks/useResizeObserver';
+import type { IKnowledgeGraphCanvasHandle } from './KnowledgeGraphCanvas';
 import { KnowledgeGraphCanvas } from './KnowledgeGraphCanvas';
 import { KnowledgeGraphLegend } from './KnowledgeGraphLegend';
 import { KnowledgeGraphToolbar } from './KnowledgeGraphToolbar';
@@ -46,6 +47,9 @@ export const KnowledgeGraph = () => {
   // fullscreen element — see the toolbar's note on why they must not differ.
   const containerRef = useRef<HTMLDivElement>(null);
   const { width, height } = useResizeObserver(containerRef);
+
+  // Null whenever the canvas is unmounted — an empty, loading or errored graph.
+  const canvasRef = useRef<IKnowledgeGraphCanvasHandle>(null);
 
   // Derived, never stored. Identity stability is the performance contract:
   // react-force-graph diffs graphData by reference, so a new object means a full
@@ -94,6 +98,18 @@ export const KnowledgeGraph = () => {
     [setAutoRotate, setFocusedNode]
   );
 
+  const handleRecenter = useCallback(() => {
+    // Clearing the focus is part of re-centring, not a nicety: the canvas's
+    // focus effect re-runs on every `graph` identity change, so a node left
+    // focused would pull the camera off the core again at the next refetch or
+    // legend toggle. Auto-rotate stops for the same reason it does when
+    // focusing — a rotation loop and an animated camera move write the same
+    // property, and the move is what the user just asked for.
+    setFocusedNode(null);
+    setAutoRotate(false);
+    canvasRef.current?.recenterOnCore();
+  }, [setAutoRotate, setFocusedNode]);
+
   const handleRefresh = useCallback(() => {
     if (!baseId) {
       return;
@@ -120,6 +136,7 @@ export const KnowledgeGraph = () => {
           visibleLinkCount={visibleCounts.links}
           autoRotate={autoRotate}
           onAutoRotateChange={setAutoRotate}
+          onRecenter={handleRecenter}
           onResetView={reset}
           onRefresh={handleRefresh}
           isRefreshing={isFetching}
@@ -165,6 +182,7 @@ export const KnowledgeGraph = () => {
         */}
         {data && graph.nodes.length > 1 && width > 0 && height > 0 && (
           <KnowledgeGraphCanvas
+            ref={canvasRef}
             graph={graph}
             width={width}
             height={height}

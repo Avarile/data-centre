@@ -9,6 +9,7 @@
   },
   "toolbar": {
     "autoRotate": "Auto rotate",
+    "recenter": "Recenter",
     "startRotate": "Démarrer la rotation",
     "stopRotate": "Arrêter la rotation",
     "fullscreen": "Fullscreen",

@@ -31,7 +31,13 @@ export const colorForNode = (node: Pick<IKnowledgeGraphNode, 'tier' | 'id' | 'ty
   return node.tier === 'type' ? `hsl(${hue} 72% 62%)` : `hsl(${hue} 52% 46%)`;
 };
 
-export const KNOWLEDGE_NODE_VAL = 2;
+/**
+ * Leaf size, and the knob most likely to be retuned by eye. It is a volume, not
+ * a radius: at the default `nodeRelSize` of 4 (never overridden here) a leaf
+ * renders at `cbrt(0.3) * 4` ≈ 2.7 world units, against a `type-knowledge` link
+ * length of 70. Halving the on-screen radius means dividing this by 8.
+ */
+export const KNOWLEDGE_NODE_VAL = 0.3;
 
 /**
  * `nodeVal` is volumetric: three-forcegraph renders a sphere of
@@ -42,18 +48,24 @@ const CORE_TYPE_VAL_SCALE = 0.2;
 
 /**
  * A type node must never render smaller than the knowledge nodes hanging off it
- * — that reads as an inverted hierarchy. The floor is set well clear of a leaf
- * rather than just above it: real taxonomies here carry only a handful of
- * children each, so `8 + 0.6 * degree` barely varies and almost every type
- * lands on this floor. At 2x the leaf value a floored type renders ~26% wider
- * than a leaf, which keeps the tier readable instead of collapsing into it.
+ * — that reads as an inverted hierarchy. The degree formula below carries that
+ * on its own at the current leaf size: its minimum, at degree 0, is
+ * `8 * 0.2 = 1.6`, over five times the leaf value and so ~75% wider on screen.
+ * Real taxonomies here carry only a handful of children each, so most types sit
+ * near that minimum; the cap at degree 40 keeps the largest (6.4) under the
+ * core (8).
+ *
+ * A `Math.max(KNOWLEDGE_NODE_VAL * 2, …)` floor used to guard this, and it did
+ * bind while the leaf value was 2 — it goes dormant below a leaf of 0.8, so at
+ * 0.3 it can never fire. It is removed rather than left dormant because a clamp
+ * that silently rescues an inverted hierarchy hides the retuning that caused it.
+ * The invariant is asserted across every degree in buildSimulationGraph.spec.ts
+ * instead: set KNOWLEDGE_NODE_VAL to 1.6 or beyond and that spec fails, which is
+ * the signal you want.
  */
-const MIN_TYPE_NODE_VAL = KNOWLEDGE_NODE_VAL * 2;
-
 export const NODE_VAL: Record<KnowledgeNodeTier, (degree: number) => number> = {
   core: () => 40 * CORE_TYPE_VAL_SCALE,
-  type: (degree) =>
-    Math.max(MIN_TYPE_NODE_VAL, (8 + Math.min(degree, 40) * 0.6) * CORE_TYPE_VAL_SCALE),
+  type: (degree) => (8 + Math.min(degree, 40) * 0.6) * CORE_TYPE_VAL_SCALE,
   knowledge: () => KNOWLEDGE_NODE_VAL,
 };
 export const DEFAULT_NODE_VAL = KNOWLEDGE_NODE_VAL;
@@ -95,3 +107,44 @@ export const chargeFor = (tier: string): number =>
 
 export const focusDistanceFor = (tier: string): number =>
   FOCUS_DISTANCE[tier as KnowledgeNodeTier] ?? DEFAULT_FOCUS_DISTANCE;
+
+export interface IVector3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
+/**
+ * A camera position holding `distance` from `target`, along the direction the
+ * camera already views it from. Preserving the direction is the point: framing
+ * the core should change where the camera looks, not swing the scene round to
+ * one canonical angle underneath the user.
+ *
+ * This is why the focus path's `position * (1 + distance / |position|)` cannot
+ * simply be reused to frame the core. That form scales the node's own position
+ * vector, which works only for a node sitting away from the origin; the core is
+ * the hub every branch hangs from and sits at roughly (0,0,0), where scaling
+ * leaves the camera inside the node.
+ */
+export const standoffPosition = (
+  camera: IVector3,
+  target: IVector3,
+  distance: number
+): IVector3 => {
+  const dx = camera.x - target.x;
+  const dy = camera.y - target.y;
+  const dz = camera.z - target.z;
+  const length = Math.hypot(dx, dy, dz);
+  // `!(length > 0)` rather than `length === 0`, so a NaN coordinate takes this
+  // branch too instead of propagating NaN into the camera — see the note above
+  // on how invisible NaN failures are here.
+  if (!(length > 0)) {
+    return { x: target.x, y: target.y, z: target.z + distance };
+  }
+  const scale = distance / length;
+  return {
+    x: target.x + dx * scale,
+    y: target.y + dy * scale,
+    z: target.z + dz * scale,
+  };
+};

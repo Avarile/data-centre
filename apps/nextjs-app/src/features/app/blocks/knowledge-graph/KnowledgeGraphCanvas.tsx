@@ -1,5 +1,5 @@
 import type { IKnowledgeGraphLink } from '@teable/openapi';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import type { ForceGraphMethods } from 'react-force-graph-3d';
 import ForceGraph3D from 'react-force-graph-3d';
 import type { Camera } from 'three';
@@ -12,6 +12,7 @@ import {
   focusDistanceFor,
   linkDistanceFor,
   nodeValFor,
+  standoffPosition,
 } from './utils/graphTheme';
 
 /**
@@ -34,9 +35,41 @@ const MAX_FRAME_MS = 100;
 const LABEL_HEIGHT = 6;
 const FOCUS_TRANSITION_MS = 900;
 
+/**
+ * Link paint, kept as two constants with one owner for transparency.
+ * three-forcegraph multiplies the two channels — `linkOpacity * colorAlpha(color)`
+ * — so the previous `rgba(148, 163, 184, 0.35)` alongside `linkOpacity={0.35}`
+ * resolved to 0.1225, measuring 1.09:1 against CANVAS_BACKGROUND: in the scene
+ * graph, invisible on screen. The colour is therefore opaque and LINK_OPACITY
+ * alone owns the alpha.
+ *
+ * slate-600 at 0.7 measures 3.34:1. That clears the 3:1 floor for non-text
+ * graphics and lands on the leaf nodes' own 3.37:1, so a branch is traceable
+ * without the edges out-shouting what they connect. The old slate-400 could not
+ * reach 3:1 at any alpha (1.73:1 even fully applied) — its lightness was the
+ * ceiling, not the double multiply.
+ *
+ * Weight is left alone: `linkWidth` stays unset, because any truthy value swaps
+ * every link for a CylinderGeometry mesh — one per link, ~2000 at the node
+ * budget — and a cylinder thins with distance, where an unset width renders a
+ * dimensionless line that holds 1px at every zoom level.
+ */
+const LINK_COLOR = '#475569';
+const LINK_OPACITY = 0.14;
+
 interface ITrackballControls {
   target: { x: number; y: number; z: number };
   update: () => void;
+}
+
+export interface IKnowledgeGraphCanvasHandle {
+  /**
+   * Ease the camera back onto the core — the hub every type branch hangs from,
+   * and so the scene's centre. Imperative rather than a piece of view state: it
+   * is a one-shot command, and modelling it as state would need a nonce to make
+   * a second press do anything at all.
+   */
+  recenterOnCore: () => void;
 }
 
 interface IKnowledgeGraphCanvasProps {
@@ -73,7 +106,10 @@ const disposeSprites = (map: Map<string, SpriteText>) => {
   map.clear();
 };
 
-export const KnowledgeGraphCanvas = (props: IKnowledgeGraphCanvasProps) => {
+export const KnowledgeGraphCanvas = forwardRef<
+  IKnowledgeGraphCanvasHandle,
+  IKnowledgeGraphCanvasProps
+>((props, ref) => {
   const {
     graph,
     width,
@@ -89,6 +125,31 @@ export const KnowledgeGraphCanvas = (props: IKnowledgeGraphCanvasProps) => {
     undefined
   );
   const spriteMapRef = useRef(new Map<string, SpriteText>());
+
+  // The core is in the simulation but never drawn, so its coordinates are the
+  // only handle on where the scene's centre actually drifted to. Falling back to
+  // the origin is right rather than defensive: that is where the hub of the star
+  // sits, and where an empty scene is centred.
+  useImperativeHandle(
+    ref,
+    () => ({
+      recenterOnCore: () => {
+        const fg = fgRef.current;
+        if (!fg) {
+          return;
+        }
+        const core = graph.nodes.find((node) => node.tier === 'core');
+        const target = { x: core?.x ?? 0, y: core?.y ?? 0, z: core?.z ?? 0 };
+        const camera = fg.camera() as Camera;
+        fg.cameraPosition(
+          standoffPosition(camera.position, target, focusDistanceFor('core')),
+          target,
+          FOCUS_TRANSITION_MS
+        );
+      },
+    }),
+    [graph]
+  );
 
   // Tier-keyed force lookups are total via the `*For` helpers: an unknown tier
   // returning undefined makes d3 compute NaN positions, and the scene renders
@@ -264,8 +325,8 @@ export const KnowledgeGraphCanvas = (props: IKnowledgeGraphCanvasProps) => {
       nodeThreeObjectExtend
       nodeVisibility={isNodeVisible}
       linkVisibility={isLinkVisible}
-      linkColor={() => 'rgba(148, 163, 184, 0.35)'}
-      linkOpacity={0.35}
+      linkColor={() => LINK_COLOR}
+      linkOpacity={LINK_OPACITY}
       enableNodeDrag={false}
       onNodeClick={handleNodeClick}
       onBackgroundClick={() => onNodeClick(null)}
@@ -273,4 +334,6 @@ export const KnowledgeGraphCanvas = (props: IKnowledgeGraphCanvasProps) => {
       d3AlphaDecay={0.015}
     />
   );
-};
+});
+
+KnowledgeGraphCanvas.displayName = 'KnowledgeGraphCanvas';

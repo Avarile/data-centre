@@ -9,6 +9,7 @@
   },
   "toolbar": {
     "autoRotate": "Auto rotate",
+    "recenter": "Recenter",
     "startRotate": "开始旋转",
     "stopRotate": "停止旋转",
     "fullscreen": "Fullscreen",

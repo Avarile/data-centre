@@ -1803,6 +1803,7 @@ export type I18nTranslations = {
         };
         "toolbar": {
             "autoRotate": string;
+            "recenter": string;
             "startRotate": string;
             "stopRotate": string;
             "fullscreen": string;

@@ -6,7 +6,14 @@ import {
   isNodeVisible,
   linkEndpointId,
 } from './buildSimulationGraph';
-import { colorForNode, CORE_COLOR, nodeValFor, UNCLASSIFIED_COLOR } from './graphTheme';
+import type { IVector3 } from './graphTheme';
+import {
+  colorForNode,
+  CORE_COLOR,
+  nodeValFor,
+  standoffPosition,
+  UNCLASSIFIED_COLOR,
+} from './graphTheme';
 
 const graph: IGetKnowledgeGraphVo = {
   version: 1,
@@ -130,6 +137,44 @@ describe('nodeValFor', () => {
     // An unknown tier returning undefined would make d3 produce NaN positions
     // and render an empty scene with no error at all.
     expect(nodeValFor('not-a-tier', 3)).toBe(nodeValFor('knowledge', 3));
+  });
+});
+
+describe('standoffPosition', () => {
+  const distanceBetween = (a: IVector3, b: IVector3) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+
+  it('holds the requested distance and keeps the current viewing direction', () => {
+    const target = { x: 10, y: 0, z: 0 };
+    // 30 units away along +x; pulling back to 60 should stay on that axis.
+    const result = standoffPosition({ x: 40, y: 0, z: 0 }, target, 60);
+
+    expect(result).toEqual({ x: 70, y: 0, z: 0 });
+    expect(distanceBetween(result, target)).toBeCloseTo(60);
+  });
+
+  it('pulls back rather than only pushing out', () => {
+    const target = { x: 0, y: 0, z: 0 };
+    const result = standoffPosition({ x: 0, y: 900, z: 0 }, target, 60);
+
+    expect(result).toEqual({ x: 0, y: 60, z: 0 });
+  });
+
+  it('backs off along +z when the camera already sits on the target', () => {
+    // Zero length: the core sits at the hub, so this is reachable rather than
+    // theoretical, and dividing by it would put NaN into the camera.
+    expect(standoffPosition({ x: 5, y: 5, z: 5 }, { x: 5, y: 5, z: 5 }, 60)).toEqual({
+      x: 5,
+      y: 5,
+      z: 65,
+    });
+  });
+
+  it('never propagates a NaN coordinate into the camera', () => {
+    const result = standoffPosition({ x: NaN, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, 60);
+
+    expect(Number.isFinite(result.x)).toBe(true);
+    expect(Number.isFinite(result.y)).toBe(true);
+    expect(Number.isFinite(result.z)).toBe(true);
   });
 });
 
