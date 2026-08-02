@@ -1,7 +1,8 @@
-import type { IGetKnowledgeGraphVo } from '@teable/openapi';
+import type { IGetKnowledgeGraphVo, IKnowledgeGraphNode } from '@teable/openapi';
 import { UNCLASSIFIED_TYPE_NODE_ID } from '@teable/openapi';
 import {
   buildSimulationGraph,
+  hiddenClosure,
   isLinkVisible,
   isNodeVisible,
   linkEndpointId,
@@ -20,10 +21,12 @@ import {
 const TYPE_KNOWLEDGE = 'type-knowledge' as const;
 /** Stands in for a tier the code has never heard of — the NaN-position guard. */
 const UNKNOWN_TIER = 'not-a-tier';
+/** sonarjs/no-duplicate-string: this etag literal is reused across nesting fixtures. */
+const TEST_ETAG = '"kg2-test"';
 
 const graph: IGetKnowledgeGraphVo = {
   version: 2,
-  etag: '"kg2-test"',
+  etag: TEST_ETAG,
   nodes: [
     {
       id: 'core',
@@ -165,6 +168,150 @@ describe('visibility', () => {
   });
 });
 
+describe('hidden subtree closure', () => {
+  const nodes = [
+    { id: 'core', tier: 'core', parentId: null, rootTypeId: null, depth: 0 },
+    { id: 'type:a', tier: 'type', parentId: 'core', rootTypeId: 'type:a', depth: 0 },
+    { id: 'type:b', tier: 'type', parentId: 'type:a', rootTypeId: 'type:a', depth: 1 },
+    { id: 'type:c', tier: 'type', parentId: 'type:b', rootTypeId: 'type:a', depth: 2 },
+    { id: 'type:z', tier: 'type', parentId: 'core', rootTypeId: 'type:z', depth: 0 },
+  ] as unknown as IKnowledgeGraphNode[];
+
+  it('hides grandchildren when a root is hidden', () => {
+    expect(hiddenClosure(nodes, ['type:a'])).toEqual(new Set(['type:a', 'type:b', 'type:c']));
+  });
+
+  it('leaves siblings alone when a leaf type is hidden', () => {
+    expect(hiddenClosure(nodes, ['type:c'])).toEqual(new Set(['type:c']));
+  });
+
+  it('is empty when nothing is hidden', () => {
+    expect(hiddenClosure(nodes, [])).toEqual(new Set());
+  });
+});
+
+describe('buildSimulationGraph with nesting', () => {
+  it('drops a knowledge whose ancestor type is hidden', () => {
+    const graph = {
+      version: 2,
+      etag: TEST_ETAG,
+      nodes: [
+        {
+          id: 'core',
+          recordId: null,
+          tier: 'core',
+          label: 'core',
+          parentId: null,
+          rootTypeId: null,
+          depth: 0,
+          degree: 1,
+        },
+        {
+          id: 'type:a',
+          recordId: 'a',
+          tier: 'type',
+          label: 'A',
+          parentId: 'core',
+          rootTypeId: 'type:a',
+          depth: 0,
+          degree: 1,
+        },
+        {
+          id: 'type:b',
+          recordId: 'b',
+          tier: 'type',
+          label: 'B',
+          parentId: 'type:a',
+          rootTypeId: 'type:a',
+          depth: 1,
+          degree: 1,
+        },
+        {
+          id: 'kn:1',
+          recordId: '1',
+          tier: 'knowledge',
+          label: 'k',
+          parentId: 'type:b',
+          rootTypeId: 'type:a',
+          depth: 2,
+          degree: 1,
+        },
+      ],
+      links: [],
+      stats: {} as never,
+    } as unknown as IGetKnowledgeGraphVo;
+
+    const result = buildSimulationGraph(graph, ['type:a']);
+    expect(result.nodes.map((n) => n.id)).toEqual(['core']);
+  });
+
+  it('drops a relation when either endpoint is hidden', () => {
+    const graph = {
+      version: 2,
+      etag: TEST_ETAG,
+      nodes: [
+        {
+          id: 'core',
+          recordId: null,
+          tier: 'core',
+          label: 'core',
+          parentId: null,
+          rootTypeId: null,
+          depth: 0,
+          degree: 2,
+        },
+        {
+          id: 'type:a',
+          recordId: 'a',
+          tier: 'type',
+          label: 'A',
+          parentId: 'core',
+          rootTypeId: 'type:a',
+          depth: 0,
+          degree: 1,
+        },
+        {
+          id: 'type:b',
+          recordId: 'b',
+          tier: 'type',
+          label: 'B',
+          parentId: 'core',
+          rootTypeId: 'type:b',
+          depth: 0,
+          degree: 1,
+        },
+        {
+          id: 'kn:1',
+          recordId: '1',
+          tier: 'knowledge',
+          label: 'k1',
+          parentId: 'type:a',
+          rootTypeId: 'type:a',
+          depth: 1,
+          degree: 2,
+        },
+        {
+          id: 'kn:2',
+          recordId: '2',
+          tier: 'knowledge',
+          label: 'k2',
+          parentId: 'type:b',
+          rootTypeId: 'type:b',
+          depth: 1,
+          degree: 2,
+        },
+      ],
+      links: [
+        { source: 'kn:1', target: 'kn:2', tier: 'knowledge-knowledge', value: 1, distance: 140 },
+      ],
+      stats: {} as never,
+    } as unknown as IGetKnowledgeGraphVo;
+
+    expect(buildSimulationGraph(graph, []).links).toHaveLength(1);
+    expect(buildSimulationGraph(graph, ['type:b']).links).toHaveLength(0);
+  });
+});
+
 describe('linkEndpointId', () => {
   it('handles both the pre-tick string and the post-tick node object', () => {
     expect(linkEndpointId('core')).toBe('core');
@@ -271,32 +418,76 @@ describe('standoffPosition', () => {
 
 describe('colorForNode', () => {
   it('uses the fixed core colour', () => {
-    expect(colorForNode({ tier: 'core', id: 'core', typeId: null })).toBe(CORE_COLOR);
+    expect(colorForNode({ tier: 'core', id: 'core', rootTypeId: null, depth: 0 })).toBe(CORE_COLOR);
   });
 
   it('uses the neutral colour for the unclassified bucket and its children', () => {
-    expect(colorForNode({ tier: 'type', id: UNCLASSIFIED_TYPE_NODE_ID, typeId: null })).toBe(
-      UNCLASSIFIED_COLOR
-    );
-    expect(colorForNode({ tier: 'knowledge', id: 'kn:9', typeId: UNCLASSIFIED_TYPE_NODE_ID })).toBe(
-      UNCLASSIFIED_COLOR
-    );
+    expect(
+      colorForNode({
+        tier: 'type',
+        id: UNCLASSIFIED_TYPE_NODE_ID,
+        rootTypeId: UNCLASSIFIED_TYPE_NODE_ID,
+        depth: 0,
+      })
+    ).toBe(UNCLASSIFIED_COLOR);
+    expect(
+      colorForNode({
+        tier: 'knowledge',
+        id: 'kn:9',
+        rootTypeId: UNCLASSIFIED_TYPE_NODE_ID,
+        depth: 1,
+      })
+    ).toBe(UNCLASSIFIED_COLOR);
   });
 
   it('is stable per type and independent of sibling types', () => {
-    const first = colorForNode({ tier: 'type', id: 'type:a', typeId: null });
-    const again = colorForNode({ tier: 'type', id: 'type:a', typeId: null });
+    const first = colorForNode({ tier: 'type', id: 'type:a', rootTypeId: 'type:a', depth: 0 });
+    const again = colorForNode({ tier: 'type', id: 'type:a', rootTypeId: 'type:a', depth: 0 });
 
     expect(again).toBe(first);
-    expect(colorForNode({ tier: 'type', id: 'type:b', typeId: null })).not.toBe(first);
+    expect(colorForNode({ tier: 'type', id: 'type:b', rootTypeId: 'type:b', depth: 0 })).not.toBe(
+      first
+    );
   });
 
   it('gives a knowledge node its parent type hue at a lower value', () => {
-    const typeColor = colorForNode({ tier: 'type', id: 'type:a', typeId: null });
-    const childColor = colorForNode({ tier: 'knowledge', id: 'kn:1', typeId: 'type:a' });
+    const typeColor = colorForNode({ tier: 'type', id: 'type:a', rootTypeId: 'type:a', depth: 0 });
+    const childColor = colorForNode({
+      tier: 'knowledge',
+      id: 'kn:1',
+      rootTypeId: 'type:a',
+      depth: 1,
+    });
 
     const hueOf = (c: string) => c.match(/hsl\((\d+)/)?.[1];
     expect(hueOf(childColor)).toBe(hueOf(typeColor));
     expect(childColor).not.toBe(typeColor);
+  });
+});
+
+describe('colorForNode with nesting', () => {
+  it('gives a subtree one hue and darkens with depth', () => {
+    const hueOf = (c: string) => c.match(/hsl\((\d+)/)?.[1];
+    const lightOf = (c: string) => Number(c.match(/ (\d+)%\)$/)?.[1]);
+
+    const root = colorForNode({ tier: 'type', id: 'type:a', rootTypeId: 'type:a', depth: 0 });
+    const child = colorForNode({ tier: 'type', id: 'type:b', rootTypeId: 'type:a', depth: 1 });
+
+    expect(hueOf(child)).toBe(hueOf(root));
+    expect(lightOf(child)).toBeLessThan(lightOf(root));
+  });
+
+  it('keeps a type lighter than its own knowledges at every depth', () => {
+    const lightOf = (c: string) => Number(c.match(/ (\d+)%\)$/)?.[1]);
+    for (const depth of [0, 1, 2, 3, 8]) {
+      const type = colorForNode({ tier: 'type', id: 'type:x', rootTypeId: 'type:a', depth });
+      const kn = colorForNode({
+        tier: 'knowledge',
+        id: 'kn:1',
+        rootTypeId: 'type:a',
+        depth: depth + 1,
+      });
+      expect(lightOf(type)).toBeGreaterThan(lightOf(kn));
+    }
   });
 });

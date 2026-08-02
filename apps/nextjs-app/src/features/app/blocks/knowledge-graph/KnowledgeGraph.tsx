@@ -80,10 +80,10 @@ export const KnowledgeGraph = () => {
     [data, focusedNodeId]
   );
   const siblingCount = useMemo(() => {
-    if (!focusedNode?.typeId) {
+    if (!focusedNode?.parentId) {
       return 0;
     }
-    return (data?.nodes ?? []).filter((node) => node.typeId === focusedNode.typeId).length;
+    return (data?.nodes ?? []).filter((node) => node.parentId === focusedNode.parentId).length;
   }, [data, focusedNode]);
 
   const handleSelectNode = useCallback(

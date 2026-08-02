@@ -19,6 +19,33 @@ export interface ISimulationGraph {
 export const EMPTY_SIMULATION_GRAPH: ISimulationGraph = { nodes: [], links: [] };
 
 /**
+ * Expands the user's hidden type ids to include every descendant type.
+ *
+ * Iterates to a fixpoint rather than assuming an ordering: the assembler does
+ * emit parents before children, but relying on that here would couple the
+ * client's filter to the server's emission order, and the coupling would be
+ * invisible until someone reordered the assembler.
+ */
+export const hiddenClosure = (
+  nodes: readonly IKnowledgeGraphNode[],
+  hiddenTypeIds: readonly string[]
+): Set<string> => {
+  const hidden = new Set(hiddenTypeIds);
+  const typeNodes = nodes.filter((node) => node.tier === 'type');
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const node of typeNodes) {
+      if (!hidden.has(node.id) && node.parentId && hidden.has(node.parentId)) {
+        hidden.add(node.id);
+        changed = true;
+      }
+    }
+  }
+  return hidden;
+};
+
+/**
  * Derives the renderable graph from (server data × view state). Never stored:
  * storing it would need an effect to keep it in sync, and would split "filter
  * changed" and "data refetched" into two update paths that can disagree.
@@ -34,16 +61,15 @@ export const buildSimulationGraph = (
     return EMPTY_SIMULATION_GRAPH;
   }
 
-  const hidden = new Set(hiddenTypeIds);
+  const hidden = hiddenClosure(graph.nodes, hiddenTypeIds);
   const keep = (node: IKnowledgeGraphNode): boolean => {
+    if (node.tier === 'core') {
+      return true;
+    }
     if (node.tier === 'type') {
       return !hidden.has(node.id);
     }
-    if (node.tier === 'knowledge') {
-      return !hidden.has(node.typeId ?? '');
-    }
-    // Core is always kept.
-    return true;
+    return !hidden.has(node.parentId ?? '');
   };
 
   // Clone every node. react-force-graph MUTATES what it is given — it writes

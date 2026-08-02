@@ -17,18 +17,27 @@ const hashHue = (id: string): number => {
 export const CORE_COLOR = '#e8e3d9';
 export const UNCLASSIFIED_COLOR = '#6b7280';
 
-export const colorForNode = (node: Pick<IKnowledgeGraphNode, 'tier' | 'id' | 'typeId'>): string => {
+/**
+ * Hue comes from the ROOT ancestor, so a whole subtree reads as one family;
+ * lightness comes from depth, so nesting is legible within that family. The
+ * floors keep a deep type from going darker than its own children, which would
+ * read as an inverted hierarchy.
+ */
+export const colorForNode = (
+  node: Pick<IKnowledgeGraphNode, 'tier' | 'id' | 'rootTypeId' | 'depth'>
+): string => {
   if (node.tier === 'core') {
     return CORE_COLOR;
   }
-  const key = node.tier === 'type' ? node.id : node.typeId;
+  const key = node.rootTypeId;
   if (!key || key === UNCLASSIFIED_TYPE_NODE_ID) {
     return UNCLASSIFIED_COLOR;
   }
   const hue = hashHue(key);
-  // Type nodes read brighter than their children, so the tier is legible by
-  // value as well as by position.
-  return node.tier === 'type' ? `hsl(${hue} 72% 62%)` : `hsl(${hue} 52% 46%)`;
+  if (node.tier === 'type') {
+    return `hsl(${hue} 72% ${Math.max(40, 62 - node.depth * 8)}%)`;
+  }
+  return `hsl(${hue} 52% ${Math.max(30, 46 - Math.max(0, node.depth - 1) * 5)}%)`;
 };
 
 /**
