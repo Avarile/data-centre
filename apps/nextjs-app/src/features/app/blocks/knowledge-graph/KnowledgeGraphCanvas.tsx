@@ -8,9 +8,11 @@ import type { ISimulationGraph, ISimulationNode } from './utils/buildSimulationG
 import { isLinkVisible, isNodeVisible } from './utils/buildSimulationGraph';
 import {
   chargeFor,
+  CHARGE_DISTANCE_MAX,
   colorForNode,
   focusDistanceFor,
   linkDistanceFor,
+  linkStrengthFor,
   nodeValFor,
   standoffPosition,
 } from './utils/graphTheme';
@@ -154,13 +156,24 @@ export const KnowledgeGraphCanvas = forwardRef<
   // Tier-keyed force lookups are total via the `*For` helpers: an unknown tier
   // returning undefined makes d3 compute NaN positions, and the scene renders
   // empty with no error at all.
+  //
+  // `distanceMax` is what keeps the layout from resolving into a star: an
+  // uncapped many-body force has every node repelling every other at any
+  // separation, and those long-range terms sum to a push away from the centre of
+  // mass. See CHARGE_DISTANCE_MAX for the whole argument. It is set here rather
+  // than at construction because three-forcegraph registers the force itself;
+  // this effect is the only hook we have on it.
   useEffect(() => {
     const fg = fgRef.current;
     if (!fg) {
       return;
     }
-    fg.d3Force('link')?.distance?.((link: { tier?: string }) => linkDistanceFor(link.tier ?? ''));
-    fg.d3Force('charge')?.strength?.((node: ISimulationNode) => chargeFor(node.tier));
+    const linkForce = fg.d3Force('link');
+    linkForce?.distance?.((link: { tier?: string }) => linkDistanceFor(link.tier ?? ''));
+    linkForce?.strength?.((link: { tier?: string }) => linkStrengthFor(link.tier ?? ''));
+    const charge = fg.d3Force('charge');
+    charge?.strength?.((node: ISimulationNode) => chargeFor(node.tier));
+    charge?.distanceMax?.(CHARGE_DISTANCE_MAX);
   }, [graph]);
 
   // Sprites are cached by node id and reused across filter changes, so a legend
@@ -330,7 +343,10 @@ export const KnowledgeGraphCanvas = forwardRef<
       enableNodeDrag={false}
       onNodeClick={handleNodeClick}
       onBackgroundClick={() => onNodeClick(null)}
-      cooldownTicks={120}
+      // The tether holding the branches together is near-slack by design, so the
+      // layout settles more slowly than a stiff star would. 220 is where the
+      // clusters stop visibly moving; the cap is what bounds the CPU cost.
+      cooldownTicks={220}
       d3AlphaDecay={0.015}
     />
   );

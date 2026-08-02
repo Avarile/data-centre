@@ -51,19 +51,27 @@ type→knowledge link becomes stiff and short so each cluster reads as one objec
 | Knob | From | To | Why |
 |---|---|---|---|
 | `TIER_CHARGE.core` | `-600` | `0` | Removes the radial engine. |
-| charge `distanceMax` | ∞ (unset) | `160` | New. Repulsion becomes local — the change that produces islands. |
-| `LINK_DISTANCE['core-type']` | `260` | `190` | Shorter tether; with the strength below it no longer sets a shell radius. |
-| `LINK_DISTANCE['type-knowledge']` | `70` | `42` | Compact blobs — leaves hug their type instead of trailing off it. |
-| `LINK_STRENGTH['core-type']` | default | `0.04` | New, tier-keyed. Loose tether: prevents drift, does not place. |
+| charge `distanceMax` | ∞ (unset) | `110` | New. Repulsion becomes local — the change that produces islands. |
+| `LINK_STRENGTH['core-type']` | default | `0.005` | New, tier-keyed. Loose tether: prevents drift, does not place. This, not the link distance, is what was pinning types to a shell. |
 | `LINK_STRENGTH['type-knowledge']` | default | `0.7` | Stiff, so a cluster reads as one object. |
-| `TIER_CHARGE.type` | `-280` | `-200` | Rebalanced against the now-capped range. |
+| `LINK_DISTANCE['type-knowledge']` | `70` | `32` | Cluster size, set by eye at the user's request. |
+| `TIER_CHARGE.type` | `-280` | `-480` | Separates neighbouring clusters now that the range is capped. |
 | `cooldownTicks` | `120` | `220` | Weaker forces need more ticks to settle; still bounded. |
-| `FOCUS_DISTANCE.core` | `420` | `340` | Scene extent shrinks, so the recenter framing follows. |
+| `FOCUS_DISTANCE.type` | `180` | `120` | Tracks the leaf distance — it frames one cluster, so it follows the cluster's size. |
+
+`LINK_DISTANCE['core-type']` and `FOCUS_DISTANCE.core` stay where they were. The
+first because the near-slack tether makes its length nearly irrelevant; the
+second because the new layout's extent brackets the old one rather than shrinking.
 
 With type placement no longer decided by the core→type link, it falls to
 type↔type repulsion, which is capped at `distanceMax`. Types push apart until
 they are past that range and then stop interacting, so they settle spread
 through the volume instead of on a common radius.
+
+`distanceMax` and `LINK_DISTANCE['type-knowledge']` are coupled: the leaf
+distance sets the cluster radius, and the cap has to stay above it or
+neighbouring clusters interpenetrate instead of shouldering each other apart.
+Retuning either one means re-checking the pair.
 
 ## Design decisions
 
@@ -97,21 +105,60 @@ Changed:
 
 Unchanged: `buildSimulationGraph.ts` and its invariants (the core stays in the
 simulation graph while hidden from the render digest), node colour and size,
-sprites and labels, link paint, legend, search, detail panel, camera behaviour
-apart from the core standoff distance.
+sprites and labels, link paint, legend, search, detail panel, and camera
+behaviour apart from the single-cluster standoff distance.
 
 ## Testing
 
 - `buildSimulationGraph.spec.ts` covers the tier hierarchy, visibility, and
   camera standoff and must keep passing unchanged — none of its assertions
   depend on the retuned values.
-- New assertions for `linkStrengthFor`: known tiers, and the unknown-tier
-  fallback that guards the NaN failure mode.
-- The layout itself is judged by eye: forces have no meaningful unit test.
+- New assertions for `linkStrengthFor` and `chargeFor`: the strength ordering
+  the layout rests on, the zero core charge surviving the `??` fallback, and the
+  unknown-tier fallback that guards the NaN failure mode.
+
+### Verifying the shape
+
+Force layouts have no meaningful unit test, but they do not have to be judged
+only by eye either. The values above were chosen by replaying the layout
+headlessly against the same solver `three-forcegraph` uses (`d3-force-3d`, 3
+dimensions, the same link/charge/center force set, the same `alphaDecay` and
+tick budget) on synthetic graphs at 116, 410 and 1006 nodes, and measuring two
+things:
+
+- **outward bias** — the mean cosine of the angle between a leaf's offset from
+  its type and that type's direction from the scene centre. `1` is every leaf
+  pointing straight out from the middle, which is the star; `0` is a
+  direction-agnostic cloud.
+- **min type gap vs cluster radius** — the closest pair of type nodes against
+  the mean leaf offset, to catch clusters merging into mush.
+
+| | outward bias | min type gap | cluster radius |
+|---|---|---|---|
+| before | 0.81 | — | — |
+| after, 116 nodes | 0.057 | 129 | 51 |
+| after, 410 nodes | 0.030 | 120 | 53 |
+| after, 1006 nodes | 0.070 | 111 | 53 |
+
+`cooldownTicks = 220` was checked the same way: running 180 further ticks moves
+nodes a mean of 1.1–2.5 units, so the layout is settled when the simulation
+stops.
 
 ## Risks
 
-With the core charge at `0` and repulsion capped, a very large type — one with
-many leaves — could pack tighter than intended, since nothing pushes its leaves
-apart beyond `distanceMax`. `LINK_DISTANCE['type-knowledge']` is the knob to
-raise if that shows up. Verified by eye against real data.
+A residual outward bias remains (0.030–0.070, no clear trend with graph size).
+This is boundary asymmetry and is inherent to any bounded blob: clusters on the
+outside are pushed by inner neighbours with nothing pushing back. It is an order
+of magnitude below the star it replaces and is not expected to read as radial,
+but a graph much larger than the current 2000-node budget would erode it.
+
+`CHARGE_DISTANCE_MAX` and `LINK_DISTANCE['type-knowledge']` were retuned together
+four times while settling the cluster size by eye (42, 95, 63, then 32). Any
+further change to the leaf distance means re-running the sweep: at 32 the cap
+sits at 110 and the closest types are ~111 apart against a 53 cluster radius, so
+there is roughly one cluster-radius of slack before clusters begin to merge.
+
+The leaf distance is also not the cluster radius. Leaves carry their own charge
+and push each other off the sphere the link defines, so a rest length of 32
+renders at ~53. Halving the link shrank the visible cluster by about a third;
+`TIER_CHARGE.knowledge` is the knob for the remainder.

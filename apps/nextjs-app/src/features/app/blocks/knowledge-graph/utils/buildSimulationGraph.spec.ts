@@ -8,12 +8,18 @@ import {
 } from './buildSimulationGraph';
 import type { IVector3 } from './graphTheme';
 import {
+  chargeFor,
   colorForNode,
   CORE_COLOR,
+  linkStrengthFor,
   nodeValFor,
   standoffPosition,
   UNCLASSIFIED_COLOR,
 } from './graphTheme';
+
+const TYPE_KNOWLEDGE = 'type-knowledge' as const;
+/** Stands in for a tier the code has never heard of — the NaN-position guard. */
+const UNKNOWN_TIER = 'not-a-tier';
 
 const graph: IGetKnowledgeGraphVo = {
   version: 1,
@@ -28,8 +34,8 @@ const graph: IGetKnowledgeGraphVo = {
   links: [
     { source: 'core', target: 'type:a', tier: 'core-type', value: 1, distance: 260 },
     { source: 'core', target: 'type:b', tier: 'core-type', value: 1, distance: 260 },
-    { source: 'type:a', target: 'kn:1', tier: 'type-knowledge', value: 1, distance: 70 },
-    { source: 'type:b', target: 'kn:2', tier: 'type-knowledge', value: 1, distance: 70 },
+    { source: 'type:a', target: 'kn:1', tier: TYPE_KNOWLEDGE, value: 1, distance: 70 },
+    { source: 'type:b', target: 'kn:2', tier: TYPE_KNOWLEDGE, value: 1, distance: 70 },
   ],
   stats: {
     typeCount: 2,
@@ -136,7 +142,38 @@ describe('nodeValFor', () => {
   it('falls back to the leaf size for an unknown tier', () => {
     // An unknown tier returning undefined would make d3 produce NaN positions
     // and render an empty scene with no error at all.
-    expect(nodeValFor('not-a-tier', 3)).toBe(nodeValFor('knowledge', 3));
+    expect(nodeValFor(UNKNOWN_TIER, 3)).toBe(nodeValFor('knowledge', 3));
+  });
+});
+
+describe('linkStrengthFor', () => {
+  it('keeps the core tether far slacker than a type holds its own leaves', () => {
+    // The whole anti-star layout rests on this ordering. Raise the core-type
+    // strength towards the type-knowledge one and every type is dragged back
+    // onto a single sphere around the core, which is the radial look this
+    // replaced.
+    expect(linkStrengthFor('core-type')).toBeLessThan(linkStrengthFor(TYPE_KNOWLEDGE));
+  });
+
+  it('falls back to a usable strength for an unknown tier', () => {
+    // Same NaN failure mode as the other tier lookups: undefined here makes d3
+    // compute NaN positions and the scene renders empty with no error at all.
+    expect(Number.isFinite(linkStrengthFor(UNKNOWN_TIER))).toBe(true);
+    expect(linkStrengthFor(UNKNOWN_TIER)).toBeGreaterThan(0);
+  });
+});
+
+describe('chargeFor', () => {
+  it('leaves the core with no charge so it cannot push the scene outwards', () => {
+    // A charge on the hub every branch hangs from is a force pointing away from
+    // the scene centre applied to every node at once. 0 must survive the `??`
+    // fallback rather than being read as absent.
+    expect(chargeFor('core')).toBe(0);
+  });
+
+  it('still repels the visible tiers, and types more than leaves', () => {
+    expect(chargeFor('knowledge')).toBeLessThan(0);
+    expect(chargeFor('type')).toBeLessThan(chargeFor('knowledge'));
   });
 });
 
