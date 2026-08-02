@@ -79,9 +79,9 @@ export const DEFAULT_NODE_VAL = KNOWLEDGE_NODE_VAL;
  */
 export const LINK_DISTANCE: Record<KnowledgeLinkTier, number> = {
   'core-type': 260,
-  'type-parent': 260,
+  'type-parent': 260, // Provisional; swept and finalized in Task 11
   'type-knowledge': 32,
-  'knowledge-knowledge': 32,
+  'knowledge-knowledge': 32, // Provisional; swept and finalized in Task 11
 };
 export const DEFAULT_LINK_DISTANCE = 120;
 
@@ -103,9 +103,9 @@ export const DEFAULT_LINK_DISTANCE = 120;
  */
 export const LINK_STRENGTH: Record<KnowledgeLinkTier, number> = {
   'core-type': 0.005,
-  'type-parent': 0.005,
+  'type-parent': 0.005, // Provisional; swept and finalized in Task 11
   'type-knowledge': 0.7,
-  'knowledge-knowledge': 0.7,
+  'knowledge-knowledge': 0.7, // Provisional; swept and finalized in Task 11
 };
 export const DEFAULT_LINK_STRENGTH = 0.3;
 
