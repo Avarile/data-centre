@@ -23,6 +23,14 @@ const LIST_PADDING = 0.5;
 interface IKnowledgeGraphLegendProps {
   /** tier === 'type', already sorted by the assembler. */
   types: IKnowledgeGraphNode[];
+  /**
+   * The CLOSURE-expanded hidden set (KnowledgeGraph.tsx computes this with
+   * `hiddenClosure`, the same helper `buildSimulationGraph` uses to filter the
+   * canvas), not the store's raw clicked ids. The two differ on purpose: the
+   * store only ever holds what the user clicked, so a hidden parent's
+   * children must be dimmed here from the expanded set, or a row reads as
+   * visible while its node has already vanished from the canvas next to it.
+   */
   hiddenTypeIds: readonly string[];
   onToggleType: (typeNodeId: string) => void;
   onShowAll: () => void;
@@ -63,6 +71,12 @@ export const KnowledgeGraphLegend = (props: IKnowledgeGraphLegendProps) => {
             <button
               key={type.id}
               type="button"
+              // Always this row's own id, regardless of whether it is dimmed
+              // by its own click or by an ancestor's: cascading is applied
+              // downstream (hiddenClosure), never here. Clicking a row that
+              // is already dimmed because an ancestor is hidden adds this
+              // row's own id to the store and visibly changes nothing until
+              // that ancestor is shown again — expected, not a bug.
               onClick={() => onToggleType(type.id)}
               aria-pressed={!hidden}
               // paddingLeft, not a nested list: the row height must stay exactly

@@ -41,8 +41,21 @@ export const KnowledgeNodeDetailPanel = (props: IKnowledgeNodeDetailPanelProps) 
             <h2 className="truncate text-sm font-semibold">{data?.label ?? nodeId}</h2>
           )}
           {data?.ancestors && data.ancestors.length > 0 && (
-            <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-              {t('knowledgeGraph:detail.path')}: {data.ancestors.map((a) => a.label).join(' / ')}
+            <p className="mt-0.5 flex text-[11px] text-muted-foreground">
+              <span className="shrink-0">{t('knowledgeGraph:detail.path')}:&nbsp;</span>
+              {/*
+                `truncate` clips at the END of the line. Ancestors are
+                root-first, so the end is the MOST specific ancestor — the
+                immediate parent, the one part of the chain worth keeping on
+                overflow. `direction: rtl` clips from the START instead;
+                `dir="ltr"` on the inner span puts the text itself back in
+                reading order so the ' / ' separators aren't reversed. The
+                "Path:" label stays in a separate, normal-direction span so it
+                isn't affected by the rtl container.
+              */}
+              <span className="min-w-0 truncate" style={{ direction: 'rtl' }}>
+                <bdi dir="ltr">{data.ancestors.map((a) => a.label).join(' / ')}</bdi>
+              </span>
             </p>
           )}
           {Boolean(data?.relatedCount) && (

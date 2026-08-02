@@ -14,7 +14,12 @@ import { KnowledgeGraphToolbar } from './KnowledgeGraphToolbar';
 import { KnowledgeNodeDetailPanel } from './KnowledgeNodeDetailPanel';
 import { KnowledgeNodeSearch } from './KnowledgeNodeSearch';
 import { useKnowledgeGraphStore } from './useKnowledgeGraphStore';
-import { buildSimulationGraph, isLinkVisible, isNodeVisible } from './utils/buildSimulationGraph';
+import {
+  buildSimulationGraph,
+  hiddenClosure,
+  isLinkVisible,
+  isNodeVisible,
+} from './utils/buildSimulationGraph';
 
 /**
  * The reference implementation's canvas colour
@@ -69,6 +74,20 @@ export const KnowledgeGraph = () => {
   const typeNodes = useMemo(
     () => (data?.nodes ?? []).filter((node) => node.tier === 'type'),
     [data]
+  );
+
+  // The store holds only the id(s) the user actually clicked — see toggleType
+  // in useKnowledgeGraphStore — and buildSimulationGraph expands that to the
+  // full hidden subtree (hiddenClosure) before filtering what the canvas
+  // draws. The legend must dim that SAME subtree, or a hidden parent's
+  // children keep reading as visible rows while their nodes have already
+  // disappeared from the scene beside them. Do not push this expanded set
+  // back into the store: the store's contract is "ids the user clicked", and
+  // storing the closure would double-apply it (hiddenClosure would then
+  // expand an already-expanded set) and break showAllTypes/un-hiding.
+  const legendHiddenTypeIds = useMemo(
+    () => Array.from(hiddenClosure(data?.nodes ?? [], hiddenTypeIds)),
+    [data, hiddenTypeIds]
   );
   const searchableNodes = useMemo(
     () => (data?.nodes ?? []).filter((node) => node.tier !== 'core'),
@@ -205,7 +224,7 @@ export const KnowledgeGraph = () => {
               {showLegend && typeNodes.length > 0 && (
                 <KnowledgeGraphLegend
                   types={typeNodes}
-                  hiddenTypeIds={hiddenTypeIds}
+                  hiddenTypeIds={legendHiddenTypeIds}
                   onToggleType={toggleType}
                   onShowAll={showAllTypes}
                 />
