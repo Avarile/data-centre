@@ -82,5 +82,13 @@ export const knowledgeGraphStatsSchema = z.object({
     .int()
     .meta({ description: 'Parent edges cut to keep the type taxonomy acyclic.' }),
   maxDepth: z.number().int().meta({ description: 'Deepest type nesting level reached.' }),
+  relationCount: z
+    .number()
+    .int()
+    .meta({ description: 'Emitted knowledge-knowledge relation links, after dedupe and budget.' }),
+  danglingRelations: z.number().int().meta({
+    description:
+      'related_knowledge entries dropped: self-relations or targets outside the emitted set.',
+  }),
 });
 export type IKnowledgeGraphStats = z.infer<typeof knowledgeGraphStatsSchema>;

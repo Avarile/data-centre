@@ -32,8 +32,10 @@ const GRAPH_TYPE_SPECS: IFieldSpec[] = [
 ];
 
 const GRAPH_KNOWLEDGE_SPECS: IFieldSpec[] = [
-  ...GRAPH_TYPE_SPECS,
+  { name: KNOWLEDGE_FIELD.title, types: TITLE_TYPES, required: true },
+  { name: KNOWLEDGE_FIELD.deletedAt, types: [FieldType.Date], required: true },
   { name: KNOWLEDGE_FIELD.knowledgeType, types: KNOWLEDGE_TYPE_FIELD_TYPES, required: false },
+  { name: KNOWLEDGE_FIELD.relatedKnowledge, types: [FieldType.Link], required: false },
 ];
 
 /** The detail endpoint is the only place `context` is read. */
@@ -84,6 +86,17 @@ const extractLinkRecordId = (raw: unknown): string | null => {
   return null;
 };
 
+/** Reads every linked recordId out of a multi-valued link cell. */
+const extractRelatedRecordIds = (raw: unknown): string[] => {
+  if (raw == null) {
+    return [];
+  }
+  const values = Array.isArray(raw) ? raw : [raw];
+  return values
+    .filter((v): v is ILinkCellValue => typeof v === 'object' && v !== null && 'id' in v)
+    .map((v) => v.id);
+};
+
 @Injectable()
 export class KnowledgeGraphService {
   constructor(
@@ -93,7 +106,8 @@ export class KnowledgeGraphService {
   ) {}
 
   async getGraph(baseId: string): Promise<IGetKnowledgeGraphVo> {
-    const { knowledgeTableId, knowledgeTypeTableId, maxKnowledgeNodes } = this.knowledgeConfig;
+    const { knowledgeTableId, knowledgeTypeTableId, maxKnowledgeNodes, maxLinks } =
+      this.knowledgeConfig;
     await this.assertTablesInBase(baseId, [knowledgeTableId, knowledgeTypeTableId]);
 
     // Types first: the knowledge read needs their titles to build the
@@ -104,6 +118,7 @@ export class KnowledgeGraphService {
 
     const graph = assembleKnowledgeGraph(types, knowledges, {
       maxKnowledgeNodes,
+      maxLinks,
       coreLabel: 'knowledge_core',
       unclassifiedLabel: 'Unclassified',
     });
@@ -230,10 +245,11 @@ export class KnowledgeGraphService {
     const titleField = this.required(fields, KNOWLEDGE_FIELD.title, tableId);
     const deletedAtField = this.required(fields, KNOWLEDGE_FIELD.deletedAt, tableId);
     const knowledgeTypeField = fields.get(KNOWLEDGE_FIELD.knowledgeType);
+    const relatedKnowledgeField = fields.get(KNOWLEDGE_FIELD.relatedKnowledge);
 
-    const projection = knowledgeTypeField
-      ? [titleField.id, knowledgeTypeField.id]
-      : [titleField.id];
+    const projection = [titleField.id, knowledgeTypeField?.id, relatedKnowledgeField?.id].filter(
+      (id): id is string => Boolean(id)
+    );
     const rows = await this.readRows(tableId, projection, deletedAtField.id);
 
     return rows.map((row) => ({
@@ -242,6 +258,9 @@ export class KnowledgeGraphService {
       typeRecordId: knowledgeTypeField
         ? extractTypeRecordId(row.fields[knowledgeTypeField.id], titleToRecordId)
         : null,
+      relatedRecordIds: relatedKnowledgeField
+        ? extractRelatedRecordIds(row.fields[relatedKnowledgeField.id])
+        : [],
     }));
   }
 

@@ -12,8 +12,11 @@ import type {
 } from './knowledge-graph.assembler';
 import { assembleKnowledgeGraph } from './knowledge-graph.assembler';
 
+const KNOWLEDGE_KNOWLEDGE = 'knowledge-knowledge' as const;
+
 const OPTS: IAssembleOptions = {
   maxKnowledgeNodes: 100,
+  maxLinks: 100,
   coreLabel: 'Knowledge Core',
   unclassifiedLabel: 'Unclassified',
 };
@@ -27,8 +30,9 @@ const type = (
 const knowledge = (
   recordId: string,
   title: string,
-  typeRecordId: string | null = null
-): IKnowledgeRow => ({ recordId, title, typeRecordId });
+  typeRecordId: string | null = null,
+  relatedRecordIds: string[] = []
+): IKnowledgeRow => ({ recordId, title, typeRecordId, relatedRecordIds });
 
 describe('assembleKnowledgeGraph', () => {
   it('emits exactly one core node for empty input', () => {
@@ -56,6 +60,8 @@ describe('assembleKnowledgeGraph', () => {
       truncated: false,
       cyclesDropped: 0,
       maxDepth: 0,
+      relationCount: 0,
+      danglingRelations: 0,
     });
   });
 
@@ -377,5 +383,77 @@ describe('nested types', () => {
     const order = graph.nodes.filter((n) => n.tier === 'type').map((n) => n.id);
 
     expect(order).toEqual(['type:a', 'type:b', 'type:c']);
+  });
+});
+
+describe('relations', () => {
+  const OPTS_L = { ...OPTS, maxLinks: 100 };
+
+  it('emits a symmetric relation exactly once', () => {
+    const graph = assembleKnowledgeGraph(
+      [],
+      [knowledge('k1', 'one', null, ['k2']), knowledge('k2', 'two', null, ['k1'])],
+      OPTS_L
+    );
+    const relations = graph.links.filter((l) => l.tier === KNOWLEDGE_KNOWLEDGE);
+
+    expect(relations).toHaveLength(1);
+    expect(relations[0]).toMatchObject({ source: 'kn:k1', target: 'kn:k2', value: 1 });
+    expect(graph.stats.relationCount).toBe(1);
+  });
+
+  it('counts relations in degree on both endpoints', () => {
+    const graph = assembleKnowledgeGraph(
+      [],
+      [
+        knowledge('k1', 'one', null, ['k2', 'k3']),
+        knowledge('k2', 'two', null, ['k1']),
+        knowledge('k3', 'three', null, ['k1']),
+      ],
+      OPTS_L
+    );
+
+    expect(graph.nodes.find((n) => n.id === 'kn:k1')?.degree).toBe(3); // its type + 2 relations
+    expect(graph.nodes.find((n) => n.id === 'kn:k2')?.degree).toBe(2);
+  });
+
+  it('drops a relation to a record outside the emitted set', () => {
+    const graph = assembleKnowledgeGraph([], [knowledge('k1', 'one', null, ['ghost'])], OPTS_L);
+
+    expect(graph.links.filter((l) => l.tier === KNOWLEDGE_KNOWLEDGE)).toHaveLength(0);
+    expect(graph.stats.danglingRelations).toBe(1);
+  });
+
+  it('drops a self-relation', () => {
+    const graph = assembleKnowledgeGraph([], [knowledge('k1', 'one', null, ['k1'])], OPTS_L);
+
+    expect(graph.links.filter((l) => l.tier === KNOWLEDGE_KNOWLEDGE)).toHaveLength(0);
+    expect(graph.stats.danglingRelations).toBe(1);
+  });
+
+  it('truncates relations but never structural links', () => {
+    const types = [type('a', 'Alpha')];
+    const rows = [
+      knowledge('k1', 'one', 'a', ['k2', 'k3']),
+      knowledge('k2', 'two', 'a', ['k1', 'k3']),
+      knowledge('k3', 'three', 'a', ['k1', 'k2']),
+    ];
+    // 1 core-type + 3 type-knowledge = 4 structural, leaving room for 1 relation.
+    const graph = assembleKnowledgeGraph(types, rows, { ...OPTS, maxLinks: 5 });
+
+    expect(graph.links.filter((l) => l.tier !== KNOWLEDGE_KNOWLEDGE)).toHaveLength(4);
+    expect(graph.links.filter((l) => l.tier === KNOWLEDGE_KNOWLEDGE)).toHaveLength(1);
+    expect(graph.stats.truncated).toBe(true);
+  });
+
+  it('orders relations deterministically', () => {
+    const rows = () => [
+      knowledge('k3', 'three', null, ['k1']),
+      knowledge('k1', 'one', null, ['k3', 'k2']),
+      knowledge('k2', 'two', null, ['k1']),
+    ];
+    expect(JSON.stringify(assembleKnowledgeGraph([], rows(), OPTS_L))).toBe(
+      JSON.stringify(assembleKnowledgeGraph([], rows(), OPTS_L))
+    );
   });
 });

@@ -96,6 +96,8 @@ const graph: IGetKnowledgeGraphVo = {
     truncated: false,
     cyclesDropped: 0,
     maxDepth: 0,
+    relationCount: 0,
+    danglingRelations: 0,
   },
 };
 

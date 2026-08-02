@@ -15,6 +15,11 @@ export const knowledgeConfig = registerAs('knowledge', () => ({
   knowledgeTableId: process.env.KNOWLEDGE_TABLE_ID ?? 'tblVTWb1kxXSFPBq4Fq',
   knowledgeTypeTableId: process.env.KNOWLEDGE_TYPE_TABLE_ID ?? 'tblWcq6Kof1AFHvbC5e',
   maxKnowledgeNodes: Number(process.env.KNOWLEDGE_GRAPH_MAX_NODES ?? 2000),
+  /**
+   * Relations are superlinear in a way nodes never were — one well-connected
+   * hub contributes hundreds of edges — and the renderer's cost is per-link.
+   */
+  maxLinks: Number(process.env.KNOWLEDGE_GRAPH_MAX_LINKS ?? 6000),
 }));
 
 export const KnowledgeConfig = () => Inject(knowledgeConfig.KEY);

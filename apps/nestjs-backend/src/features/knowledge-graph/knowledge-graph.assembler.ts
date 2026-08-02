@@ -20,6 +20,17 @@ const TYPE_KNOWLEDGE_DISTANCE = 70;
 /** Between the core→type and type→knowledge lengths: a nested type is closer
  *  to its parent than a root is to core, but still farther than a leaf. */
 const TYPE_PARENT_DISTANCE = 90;
+const KNOWLEDGE_KNOWLEDGE_DISTANCE = 140;
+
+/** Canonical key for an unordered pair. related_knowledge is two-way, so every
+ *  association arrives twice — once from each end — and would otherwise render
+ *  as two coincident edges and double-count in degree. */
+const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
+/** Deterministic [source, target] for an unordered pair: smaller id first.
+ *  Split out of buildRelations purely to keep its cognitive complexity in
+ *  check — no behaviour differs from the inline ternary. */
+const orderPair = (a: string, b: string): [string, string] => (a < b ? [a, b] : [b, a]);
 
 export interface IKnowledgeTypeRow {
   recordId: string;
@@ -36,10 +47,13 @@ export interface IKnowledgeRow {
   title: string;
   /** recordId of the linked knowledge_type, or null when unlinked/unresolvable */
   typeRecordId: string | null;
+  /** recordIds from the two-way related_knowledge cell. */
+  relatedRecordIds: string[];
 }
 
 export interface IAssembleOptions {
   maxKnowledgeNodes: number;
+  maxLinks: number;
   coreLabel: string;
   unclassifiedLabel: string;
 }
@@ -213,6 +227,83 @@ const buildLinks = (
 };
 
 /**
+ * Dedupes the two-way `related_knowledge` associations into one canonical
+ * pair per relation and tallies how many relations touch each endpoint. Split
+ * out of assembleKnowledgeGraph purely to keep that function's cognitive
+ * complexity in check — no behaviour differs from the inline version.
+ */
+const buildRelations = (
+  emitted: IKnowledgeRow[],
+  emittedIds: ReadonlySet<string>
+): {
+  pairs: { source: string; target: string }[];
+  relationDegree: Map<string, number>;
+  danglingRelations: number;
+} => {
+  const seenPairs = new Set<string>();
+  const pairs: { source: string; target: string }[] = [];
+  let danglingRelations = 0;
+
+  for (const row of emitted) {
+    for (const other of row.relatedRecordIds) {
+      if (other === row.recordId || !emittedIds.has(other)) {
+        danglingRelations++;
+        continue;
+      }
+      const key = pairKey(row.recordId, other);
+      if (seenPairs.has(key)) {
+        continue;
+      }
+      seenPairs.add(key);
+      const [source, target] = orderPair(row.recordId, other);
+      pairs.push({ source, target });
+    }
+  }
+  pairs.sort((a, b) => a.source.localeCompare(b.source) || a.target.localeCompare(b.target));
+
+  const relationDegree = new Map<string, number>();
+  for (const pair of pairs) {
+    relationDegree.set(pair.source, (relationDegree.get(pair.source) ?? 0) + 1);
+    relationDegree.set(pair.target, (relationDegree.get(pair.target) ?? 0) + 1);
+  }
+
+  return { pairs, relationDegree, danglingRelations };
+};
+
+/**
+ * Slices the deduped relation pairs down to whatever budget remains after
+ * structural links, and turns the survivors into knowledge-knowledge links.
+ * Structural links are never dropped: without the taxonomy the layout loses
+ * its skeleton, so only relations are truncated. Split out of
+ * assembleKnowledgeGraph purely to keep that function's cognitive complexity
+ * in check — no behaviour differs from the inline version.
+ */
+const buildRelationLinks = (
+  pairs: { source: string; target: string }[],
+  maxLinks: number,
+  structuralLinkCount: number,
+  nodesTruncated: boolean
+): { relationLinks: IKnowledgeGraphLink[]; relationCount: number; truncated: boolean } => {
+  const roomForRelations = Math.max(0, maxLinks - structuralLinkCount);
+  const relationsTruncated = pairs.length > roomForRelations;
+  const emittedPairs = relationsTruncated ? pairs.slice(0, roomForRelations) : pairs;
+
+  const relationLinks: IKnowledgeGraphLink[] = emittedPairs.map((pair) => ({
+    source: `${KNOWLEDGE_NODE_PREFIX}${pair.source}`,
+    target: `${KNOWLEDGE_NODE_PREFIX}${pair.target}`,
+    tier: 'knowledge-knowledge',
+    value: 1,
+    distance: KNOWLEDGE_KNOWLEDGE_DISTANCE,
+  }));
+
+  return {
+    relationLinks,
+    relationCount: emittedPairs.length,
+    truncated: nodesTruncated || relationsTruncated,
+  };
+};
+
+/**
  * Turns two flat row sets into the 3-tier star. Pure: the only place graph
  * shape is decided, and the only place worth unit-testing on the backend.
  */
@@ -221,7 +312,7 @@ export const assembleKnowledgeGraph = (
   knowledges: IKnowledgeRow[],
   options: IAssembleOptions
 ): IAssembledGraph => {
-  const { maxKnowledgeNodes, coreLabel, unclassifiedLabel } = options;
+  const { maxKnowledgeNodes, maxLinks, coreLabel, unclassifiedLabel } = options;
 
   const sortedTypes = [...types].sort(byTitleThenId);
 
@@ -244,6 +335,17 @@ export const assembleKnowledgeGraph = (
   const sorted = [...knowledges].sort(byTitleThenId);
   const truncated = sorted.length > maxKnowledgeNodes;
   const emitted = truncated ? sorted.slice(0, maxKnowledgeNodes) : sorted;
+
+  // Relations are computed before the node loop below: node `degree` counts
+  // them, so degree cannot be assigned until relationDegree exists.
+  const emittedIds = new Set(emitted.map((row) => row.recordId));
+  const { pairs, relationDegree, danglingRelations } = buildRelations(emitted, emittedIds);
+  // relationDegree is computed over ALL pairs while only the budgeted pairs
+  // are drawn below, so a truncated graph reports a degree higher than its
+  // visible edges. That is deliberate: degree drives node sizing, and a
+  // well-connected hub must not visually shrink just because a link budget
+  // hid some of its edges.
+  const relationDegreeOf = (recordId: string) => relationDegree.get(recordId) ?? 0;
 
   const bucketOf = (row: IKnowledgeRow): string =>
     row.typeRecordId && knownTypeIds.has(row.typeRecordId)
@@ -348,7 +450,8 @@ export const assembleKnowledgeGraph = (
       parentId: bucket,
       rootTypeId: rootOfBucket(bucket),
       depth: depthOfBucket(bucket) + 1,
-      degree: 1,
+      // 1 for the type link, plus every deduped relation touching this record.
+      degree: 1 + relationDegreeOf(row.recordId),
     });
   }
 
@@ -363,6 +466,15 @@ export const assembleKnowledgeGraph = (
     bucketOf
   );
 
+  // Relations share the same `maxLinks` budget as the structural links above,
+  // but never displace them — see buildRelationLinks.
+  const {
+    relationLinks,
+    relationCount,
+    truncated: overallTruncated,
+  } = buildRelationLinks(pairs, maxLinks, links.length, truncated);
+  links.push(...relationLinks);
+
   return {
     nodes,
     links,
@@ -372,9 +484,11 @@ export const assembleKnowledgeGraph = (
       orphanCount,
       nodeCount: nodes.length,
       linkCount: links.length,
-      truncated,
+      truncated: overallTruncated,
       cyclesDropped,
       maxDepth,
+      relationCount,
+      danglingRelations,
     },
   };
 };
