@@ -104,6 +104,7 @@ ENV TZ=UTC \
 RUN set -ex; \
         npm install zx -g; \
         corepack enable; \
+        corepack prepare pnpm@9.13.0 --activate; \
         apt-get update; \
         apt-get install -y --no-install-recommends \
                 curl \
@@ -114,6 +115,13 @@ RUN set -ex; \
     	; \
     	rm -rf /var/lib/apt/lists/*; \
         ln -s /usr/local/lib/node_modules /node_modules
+
+# `corepack enable` only installs shims — the pnpm tarball is fetched on first
+# use. start.sh runs Prisma migrations through pnpm, so without the prepare
+# above a cold start silently depends on registry.npmjs.org being reachable.
+# Pinned cache is baked in, so refuse to reach out at runtime: a version
+# mismatch should fail loudly here rather than hang on a network call.
+ENV COREPACK_ENABLE_NETWORK=0
 
 # gosu for better su+exec command (multi-stage copy from official image)
 COPY --from=gosu /gosu /usr/local/bin/gosu
