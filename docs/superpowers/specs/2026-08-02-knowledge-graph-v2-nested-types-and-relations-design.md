@@ -431,10 +431,23 @@ nonsense to an LLM rather than throwing. Grep for `knowledge_type` across
 `apps/mastra-ai` after the migration and confirm every read goes through
 `.title`.
 
-**`listKnowledgesByType`'s filter semantics against a Link field are unverified.**
-Teable's link filtering may compare against title or id depending on operator.
-This is the one item in the plan that needs checking against a running instance
-before it can be called done.
+**`listKnowledgesByType`'s filter semantics against a Link field — RESOLVED, and
+it was a real bug.** This was the one item flagged as needing a running instance.
+It did not: reading the server settles it. A Link field is `cellValueType String`
++ `dbFieldType Json`, which routes to the JSON cell-value filter
+(`filter-query.abstract.ts:251-255`), whose `is` handler for a link is
+`jsonb_extract_path_text(cell, 'id') = ?`
+(`postgres/cell-value-filter/single-value/json-cell-value-filter.adapter.ts:47-51`).
+It compares the RECORD ID and never the title.
+
+So filtering that column with a title matches nothing. Before the migration the
+column is text and the filter works; after it, `listKnowledgesByType` and the
+agent's `list-knowledges` tool return an empty list with no error — the agent
+reports "no knowledges of that type". Silent wrong answers to an LLM are the
+worst failure mode available here, and the bug is dormant until the migration
+runs, which is exactly when nobody is looking for it.
+
+Fixed by resolving the title to a type record id and filtering on the id.
 
 **Relations undo the cluster layout.** Cross-cluster edges pull clusters
 together, which is the exact force the clustering work removed. The starting
