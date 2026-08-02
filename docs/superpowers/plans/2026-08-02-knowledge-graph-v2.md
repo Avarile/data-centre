@@ -244,10 +244,28 @@ In `apps/nestjs-backend/test/knowledge-graph.e2e-spec.ts`:
     expect(data.etag).toMatch(/^"kg2-[0-9a-f]{16}"$/);
 ```
 
-- [ ] **Step 7: Typecheck the frontend is untouched**
+- [ ] **Step 7: Typecheck the frontend, and fix what the tier union forces**
 
 Run: `cd apps/nextjs-app && npx tsc --noEmit -p tsconfig.json`
-Expected: clean. `typeId` still exists, so no consumer breaks.
+
+Expected: **not** clean on the first run. Keeping `typeId` protects the consumers
+that *read* nodes, but two things still break by construction, and both must be
+fixed in this task:
+
+1. `LINK_DISTANCE` and `LINK_STRENGTH` in `utils/graphTheme.ts` are typed
+   `Record<KnowledgeLinkTier, number>` — a total Record. Adding two members to
+   that union is itself a breaking change. Add the two keys with **placeholder**
+   values copied from their nearest sibling (`type-parent` from `core-type`,
+   `knowledge-knowledge` from `type-knowledge`) and comment each as provisional,
+   naming Task 11 as the owner of the real values. Do not invent tuned numbers
+   here — Task 11 sweeps them.
+2. Test files that build `IKnowledgeGraphNode` / `IGetKnowledgeGraphVo` literals
+   with an explicit type annotation — `utils/buildSimulationGraph.spec.ts` and
+   `KnowledgeNodeSearch.spec.tsx` — fail because the three new fields are
+   required, not optional. Add the fields to those literals.
+
+Re-run until clean. Both edits are forced by this task's own contract change, so
+they belong to this task and are not scope creep.
 
 - [ ] **Step 8: Commit**
 
@@ -1939,7 +1957,11 @@ Run:
 cd apps/nestjs-backend && npx vitest run src/features/knowledge-graph/ && pnpm test-e2e -- knowledge-graph
 cd ../nextjs-app && npx vitest run src/features/app/blocks/knowledge-graph && npx tsc --noEmit -p tsconfig.json && npx eslint src/features/app/blocks/knowledge-graph --ext .ts,.tsx
 ```
-Expected: all PASS. A `typeId` reference surviving anywhere shows up here as a typecheck error.
+Expected: all PASS. A `typeId` reference surviving anywhere shows up here as a
+typecheck error — including inside test files, which build node literals with
+explicit type annotations and therefore break on a removed field just as they did
+on an added one. Expect to update `utils/buildSimulationGraph.spec.ts` and
+`KnowledgeNodeSearch.spec.tsx` alongside the source.
 
 - [ ] **Step 6: Commit**
 
@@ -1986,7 +2008,11 @@ describe('force tiers for v2 links', () => {
 Run: `cd apps/nextjs-app && npx vitest run src/features/app/blocks/knowledge-graph/utils/buildSimulationGraph.spec.ts -t "force tiers"`
 Expected: FAIL — both new tiers currently return the defaults, so the orderings do not hold.
 
-- [ ] **Step 3: Add the entries**
+- [ ] **Step 3: Replace the placeholders with the swept values**
+
+Task 1 already added these four entries with placeholder values copied from
+their sibling tiers, so this step **overwrites** them — it does not add new
+keys. Replace the provisional comments with the real rationale.
 
 ```ts
 export const LINK_DISTANCE: Record<KnowledgeLinkTier, number> = {
