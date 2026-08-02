@@ -12,6 +12,7 @@ import {
   chargeFor,
   colorForNode,
   CORE_COLOR,
+  linkDistanceFor,
   linkStrengthFor,
   nodeValFor,
   standoffPosition,
@@ -19,6 +20,7 @@ import {
 } from './graphTheme';
 
 const TYPE_KNOWLEDGE = 'type-knowledge' as const;
+const KNOWLEDGE_KNOWLEDGE = 'knowledge-knowledge' as const;
 /** Stands in for a tier the code has never heard of — the NaN-position guard. */
 const UNKNOWN_TIER = 'not-a-tier';
 /** sonarjs/no-duplicate-string: this etag literal is reused across nesting fixtures. */
@@ -297,7 +299,7 @@ describe('buildSimulationGraph with nesting', () => {
         },
       ],
       links: [
-        { source: 'kn:1', target: 'kn:2', tier: 'knowledge-knowledge', value: 1, distance: 140 },
+        { source: 'kn:1', target: 'kn:2', tier: KNOWLEDGE_KNOWLEDGE, value: 1, distance: 140 },
       ],
       stats: {} as never,
     } as unknown as IGetKnowledgeGraphVo;
@@ -356,6 +358,22 @@ describe('linkStrengthFor', () => {
     // compute NaN positions and the scene renders empty with no error at all.
     expect(Number.isFinite(linkStrengthFor(UNKNOWN_TIER))).toBe(true);
     expect(linkStrengthFor(UNKNOWN_TIER)).toBeGreaterThan(0);
+  });
+});
+
+describe('force tiers for v2 links', () => {
+  it('holds a subtree tighter than it holds a peer relation', () => {
+    expect(linkStrengthFor('type-parent')).toBeGreaterThan(linkStrengthFor(KNOWLEDGE_KNOWLEDGE));
+    expect(linkDistanceFor(KNOWLEDGE_KNOWLEDGE)).toBeGreaterThan(linkDistanceFor('type-parent'));
+  });
+
+  it('keeps a relation weaker than the link holding a leaf to its type, so relations bend the layout instead of dominating it', () => {
+    expect(linkStrengthFor(KNOWLEDGE_KNOWLEDGE)).toBeLessThan(linkStrengthFor(TYPE_KNOWLEDGE));
+  });
+
+  it('still falls back for an unknown tier', () => {
+    expect(Number.isFinite(linkStrengthFor(UNKNOWN_TIER))).toBe(true);
+    expect(Number.isFinite(linkDistanceFor(UNKNOWN_TIER))).toBe(true);
   });
 });
 

@@ -96,9 +96,18 @@ export const DEFAULT_NODE_VAL = KNOWLEDGE_NODE_VAL;
  */
 export const LINK_DISTANCE: Record<KnowledgeLinkTier, number> = {
   'core-type': 260,
-  'type-parent': 260, // Provisional; swept and finalized in Task 11
+  // Short enough that a child type sits near its parent rather than out at the
+  // core-type radius, so nesting reads as proximity.
+  'type-parent': 90,
   'type-knowledge': 32,
-  'knowledge-knowledge': 32, // Provisional; swept and finalized in Task 11
+  // Long relative to a cluster's own radius (~53), so a relation reaches across
+  // the gap between two clusters instead of trying to plant one inside the
+  // other's radius, which is what pulls them into a single blob. 180 rather
+  // than a shorter rest length: swept against nested types (see
+  // LINK_STRENGTH['knowledge-knowledge']), a shorter distance measured a
+  // tighter min-type-gap/cluster-radius ratio without buying back any outward
+  // bias, i.e. it only cost separation.
+  'knowledge-knowledge': 180,
 };
 export const DEFAULT_LINK_DISTANCE = 120;
 
@@ -120,9 +129,26 @@ export const DEFAULT_LINK_DISTANCE = 120;
  */
 export const LINK_STRENGTH: Record<KnowledgeLinkTier, number> = {
   'core-type': 0.005,
-  'type-parent': 0.005, // Provisional; swept and finalized in Task 11
+  // Holds a subtree together, looser than a type holds its own leaves, so
+  // nesting reads as nesting rather than as one merged cluster.
+  'type-parent': 0.35,
   'type-knowledge': 0.7,
-  'knowledge-knowledge': 0.7, // Provisional; swept and finalized in Task 11
+  // Long and weak on purpose. This is the only edge that crosses clusters, and
+  // the cluster layout depends on repulsion staying local — a relation should
+  // bend the arrangement, not drag two clusters into one.
+  //
+  // As weak as core-type, and for the same reason: at anything nearer
+  // type-knowledge's stiffness this becomes a placement force instead of a
+  // tether, and a placement force pulling across clusters is exactly the star
+  // this design undid. A synthetic sweep at ~1 relation per 5 knowledges, most
+  // of them cross-cluster (the case that stresses this the most), holds
+  // outward bias at 0.07-0.12 across 142-1232 nodes — inside the "well under
+  // 0.2" ceiling though above the pre-relation 0.03-0.07 band — with the
+  // closest type pair staying 1.5-2x the cluster radius apart at every scale.
+  // 0.05, the strength type-knowledge's own distance would suggest by
+  // analogy, measured outward bias above 0.15 at the 1000-node budget and is
+  // not used here.
+  'knowledge-knowledge': 0.005,
 };
 export const DEFAULT_LINK_STRENGTH = 0.3;
 
