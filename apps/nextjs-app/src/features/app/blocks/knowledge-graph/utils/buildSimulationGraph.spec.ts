@@ -468,7 +468,7 @@ describe('colorForNode', () => {
 describe('colorForNode with nesting', () => {
   it('gives a subtree one hue and darkens with depth', () => {
     const hueOf = (c: string) => c.match(/hsl\((\d+)/)?.[1];
-    const lightOf = (c: string) => Number(c.match(/ (\d+)%\)$/)?.[1]);
+    const lightOf = (c: string) => Number(c.match(/ (\d+(?:\.\d+)?)%\)$/)?.[1]);
 
     const root = colorForNode({ tier: 'type', id: 'type:a', rootTypeId: 'type:a', depth: 0 });
     const child = colorForNode({ tier: 'type', id: 'type:b', rootTypeId: 'type:a', depth: 1 });
@@ -478,8 +478,8 @@ describe('colorForNode with nesting', () => {
   });
 
   it('keeps a type lighter than its own knowledges at every depth', () => {
-    const lightOf = (c: string) => Number(c.match(/ (\d+)%\)$/)?.[1]);
-    for (const depth of [0, 1, 2, 3, 8]) {
+    const lightOf = (c: string) => Number(c.match(/ (\d+(?:\.\d+)?)%\)$/)?.[1]);
+    for (const depth of [0, 1, 2, 3, 4, 5, 6, 7, 8]) {
       const type = colorForNode({ tier: 'type', id: 'type:x', rootTypeId: 'type:a', depth });
       const kn = colorForNode({
         tier: 'knowledge',
@@ -488,6 +488,22 @@ describe('colorForNode with nesting', () => {
         depth: depth + 1,
       });
       expect(lightOf(type)).toBeGreaterThan(lightOf(kn));
+    }
+  });
+
+  it('never repeats a colour between a type and its own deeper descendant', () => {
+    // The bug this guards against: a hard Math.max clamp made every depth past
+    // the floor produce the identical string, so a type at depth 3 and one at
+    // depth 4 in the same subtree were visually indistinguishable.
+    for (const depth of [0, 1, 2, 3, 4, 5, 6, 7, 8]) {
+      const parent = colorForNode({ tier: 'type', id: 'type:x', rootTypeId: 'type:a', depth });
+      const child = colorForNode({
+        tier: 'type',
+        id: 'type:y',
+        rootTypeId: 'type:a',
+        depth: depth + 1,
+      });
+      expect(child).not.toBe(parent);
     }
   });
 });

@@ -19,9 +19,17 @@ export const UNCLASSIFIED_COLOR = '#6b7280';
 
 /**
  * Hue comes from the ROOT ancestor, so a whole subtree reads as one family;
- * lightness comes from depth, so nesting is legible within that family. The
- * floors keep a deep type from going darker than its own children, which would
- * read as an inverted hierarchy.
+ * lightness comes from depth, so nesting is legible within that family.
+ *
+ * Lightness decays asymptotically towards its floor rather than clamping onto
+ * it, so it strictly decreases at every depth instead of flattening once the
+ * floor is reached — a hard `Math.max` clamp let a type at depth 3+ and its
+ * own deeper descendants render as the identical colour. The decay also keeps
+ * a type lighter than its own knowledges at every depth, provably rather than
+ * by inspection: for a type at depth d and its child knowledge at depth d+1,
+ *   type(d)        = 40 + 22 * 0.75^d
+ *   knowledge(d+1) = 28 + 18 * 0.75^d
+ *   difference     = 12 + 4 * 0.75^d  >  0  for every d
  */
 export const colorForNode = (
   node: Pick<IKnowledgeGraphNode, 'tier' | 'id' | 'rootTypeId' | 'depth'>
@@ -35,9 +43,9 @@ export const colorForNode = (
   }
   const hue = hashHue(key);
   if (node.tier === 'type') {
-    return `hsl(${hue} 72% ${Math.max(40, 62 - node.depth * 8)}%)`;
+    return `hsl(${hue} 72% ${(40 + 22 * Math.pow(0.75, node.depth)).toFixed(1)}%)`;
   }
-  return `hsl(${hue} 52% ${Math.max(30, 46 - Math.max(0, node.depth - 1) * 5)}%)`;
+  return `hsl(${hue} 52% ${(28 + 18 * Math.pow(0.75, Math.max(0, node.depth - 1))).toFixed(1)}%)`;
 };
 
 /**
