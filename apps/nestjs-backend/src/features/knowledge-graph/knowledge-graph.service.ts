@@ -18,7 +18,7 @@ import { RecordService } from '../record/record.service';
 import type { IKnowledgeRow, IKnowledgeTypeRow } from './knowledge-graph.assembler';
 import { assembleKnowledgeGraph } from './knowledge-graph.assembler';
 import type { IFieldSpec, IResolvedField } from './types';
-import { KNOWLEDGE_FIELD, KNOWLEDGE_TYPE_FIELD_TYPES } from './types';
+import { KNOWLEDGE_FIELD, KNOWLEDGE_TYPE_FIELD_TYPES, PARENT_TYPE_FIELD_TYPES } from './types';
 
 const TITLE_TYPES = [FieldType.SingleLineText, FieldType.LongText] as const;
 const CONTEXT_TYPES = [FieldType.LongText, FieldType.SingleLineText] as const;
@@ -28,6 +28,7 @@ const CONTEXT_TYPES = [FieldType.LongText, FieldType.SingleLineText] as const;
 const GRAPH_TYPE_SPECS: IFieldSpec[] = [
   { name: KNOWLEDGE_FIELD.title, types: TITLE_TYPES, required: true },
   { name: KNOWLEDGE_FIELD.deletedAt, types: [FieldType.Date], required: true },
+  { name: KNOWLEDGE_FIELD.parentType, types: PARENT_TYPE_FIELD_TYPES, required: false },
 ];
 
 const GRAPH_KNOWLEDGE_SPECS: IFieldSpec[] = [
@@ -67,6 +68,18 @@ const extractTypeRecordId = (
   // Plain-text fallback: the column stores the linked record's title.
   if (typeof first === 'string') {
     return titleToRecordId.get(first) ?? null;
+  }
+  return null;
+};
+
+/** Reads the linked recordId out of a single-valued link cell. */
+const extractLinkRecordId = (raw: unknown): string | null => {
+  if (raw == null) {
+    return null;
+  }
+  const first = Array.isArray(raw) ? raw[0] : raw;
+  if (first && typeof first === 'object' && 'id' in (first as object)) {
+    return (first as ILinkCellValue).id;
   }
   return null;
 };
@@ -195,14 +208,17 @@ export class KnowledgeGraphService {
     const fields = await this.resolveFields(tableId, GRAPH_TYPE_SPECS);
     const titleField = this.required(fields, KNOWLEDGE_FIELD.title, tableId);
     const deletedAtField = this.required(fields, KNOWLEDGE_FIELD.deletedAt, tableId);
+    const parentField = fields.get(KNOWLEDGE_FIELD.parentType);
 
-    const rows = await this.readRows(tableId, [titleField.id], deletedAtField.id);
+    const projection = parentField ? [titleField.id, parentField.id] : [titleField.id];
+    const rows = await this.readRows(tableId, projection, deletedAtField.id);
 
     return rows.map((row) => ({
       recordId: row.id,
       // dbRecord2RecordFields drops cells that convert to null, so the key can
       // be absent rather than null — never assume it exists.
       title: (row.fields[titleField.id] as string | undefined) ?? '',
+      parentRecordId: parentField ? extractLinkRecordId(row.fields[parentField.id]) : null,
     }));
   }
 

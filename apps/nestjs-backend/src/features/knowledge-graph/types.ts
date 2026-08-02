@@ -13,10 +13,15 @@ export const KNOWLEDGE_FIELD = {
   context: 'context',
   deletedAt: 'deleted_at',
   knowledgeType: 'knowledge_type',
+  parentType: 'parent_type',
+  relatedKnowledge: 'related_knowledge',
 } as const;
 
 /** `knowledge_type` is accepted as either a Link or a plain-text title column. */
 export const KNOWLEDGE_TYPE_FIELD_TYPES = [FieldType.Link, FieldType.SingleLineText] as const;
+
+/** Self-link on knowledge_type. Link only — a text parent could not survive a rename. */
+export const PARENT_TYPE_FIELD_TYPES = [FieldType.Link] as const;
 
 export interface IResolvedField {
   id: string;

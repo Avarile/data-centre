@@ -18,7 +18,11 @@ const OPTS: IAssembleOptions = {
   unclassifiedLabel: 'Unclassified',
 };
 
-const type = (recordId: string, title: string): IKnowledgeTypeRow => ({ recordId, title });
+const type = (
+  recordId: string,
+  title: string,
+  parentRecordId: string | null = null
+): IKnowledgeTypeRow => ({ recordId, title, parentRecordId });
 
 const knowledge = (
   recordId: string,
@@ -50,6 +54,8 @@ describe('assembleKnowledgeGraph', () => {
       nodeCount: 1,
       linkCount: 0,
       truncated: false,
+      cyclesDropped: 0,
+      maxDepth: 0,
     });
   });
 
@@ -262,5 +268,114 @@ describe('assembleKnowledgeGraph', () => {
         ...graph,
       })
     ).not.toThrow();
+  });
+});
+
+describe('nested types', () => {
+  it('reports depth and root ancestor down a three-level chain', () => {
+    const graph = assembleKnowledgeGraph(
+      [type('a', 'Alpha'), type('b', 'Beta', 'a'), type('c', 'Gamma', 'b')],
+      [],
+      OPTS
+    );
+    const at = (id: string) => graph.nodes.find((n) => n.id === `type:${id}`);
+
+    expect(at('a')).toMatchObject({ parentId: 'core', rootTypeId: 'type:a', depth: 0 });
+    expect(at('b')).toMatchObject({ parentId: 'type:a', rootTypeId: 'type:a', depth: 1 });
+    expect(at('c')).toMatchObject({ parentId: 'type:b', rootTypeId: 'type:a', depth: 2 });
+    expect(graph.stats.maxDepth).toBe(2);
+  });
+
+  it('links core to roots only, and parents to children', () => {
+    const graph = assembleKnowledgeGraph([type('a', 'Alpha'), type('b', 'Beta', 'a')], [], OPTS);
+
+    expect(graph.links.filter((l) => l.tier === 'core-type').map((l) => l.target)).toEqual([
+      'type:a',
+    ]);
+    expect(graph.links.filter((l) => l.tier === 'type-parent')).toEqual([
+      {
+        source: 'type:a',
+        target: 'type:b',
+        tier: 'type-parent',
+        value: 1,
+        distance: expect.any(Number),
+      },
+    ]);
+  });
+
+  it('counts child types and child knowledges in a type degree', () => {
+    const graph = assembleKnowledgeGraph(
+      [type('a', 'Alpha'), type('b', 'Beta', 'a')],
+      [knowledge('k1', 'one', 'a')],
+      OPTS
+    );
+
+    expect(graph.nodes.find((n) => n.id === 'type:a')?.degree).toBe(2);
+  });
+
+  it('gives a knowledge its type depth plus one, and the type root', () => {
+    const graph = assembleKnowledgeGraph(
+      [type('a', 'Alpha'), type('b', 'Beta', 'a')],
+      [knowledge('k1', 'one', 'b')],
+      OPTS
+    );
+
+    expect(graph.nodes.find((n) => n.id === 'kn:k1')).toMatchObject({
+      parentId: 'type:b',
+      rootTypeId: 'type:a',
+      depth: 2,
+    });
+  });
+
+  it('treats a self-parent as a root and counts it', () => {
+    const graph = assembleKnowledgeGraph([type('a', 'Alpha', 'a')], [], OPTS);
+
+    expect(graph.nodes.find((n) => n.id === 'type:a')).toMatchObject({
+      parentId: 'core',
+      depth: 0,
+    });
+    expect(graph.stats.cyclesDropped).toBe(1);
+  });
+
+  it('breaks a two-cycle and a three-cycle without hanging', () => {
+    const two = assembleKnowledgeGraph([type('a', 'Alpha', 'b'), type('b', 'Beta', 'a')], [], OPTS);
+    expect(two.stats.cyclesDropped).toBe(1);
+    expect(two.nodes.filter((n) => n.tier === 'type' && n.parentId === 'core')).toHaveLength(1);
+
+    const three = assembleKnowledgeGraph(
+      [type('a', 'Alpha', 'c'), type('b', 'Beta', 'a'), type('c', 'Gamma', 'b')],
+      [],
+      OPTS
+    );
+    expect(three.stats.cyclesDropped).toBe(1);
+  });
+
+  it('drops the SAME edge on every run, because the ETag depends on it', () => {
+    const rows = () => [type('a', 'Alpha', 'b'), type('b', 'Beta', 'a')];
+    const first = assembleKnowledgeGraph(rows(), [], OPTS);
+    const again = assembleKnowledgeGraph(rows(), [], OPTS);
+
+    expect(JSON.stringify(again)).toBe(JSON.stringify(first));
+  });
+
+  it('treats a parent pointing at a missing type as a root, not as a drop', () => {
+    const graph = assembleKnowledgeGraph([type('a', 'Alpha', 'ghost')], [], OPTS);
+
+    expect(graph.nodes.find((n) => n.id === 'type:a')).toMatchObject({
+      parentId: 'core',
+      depth: 0,
+    });
+    expect(graph.stats.cyclesDropped).toBe(0);
+  });
+
+  it('emits parents before their children', () => {
+    const graph = assembleKnowledgeGraph(
+      [type('b', 'Beta', 'a'), type('a', 'Alpha'), type('c', 'Gamma', 'b')],
+      [],
+      OPTS
+    );
+    const order = graph.nodes.filter((n) => n.tier === 'type').map((n) => n.id);
+
+    expect(order).toEqual(['type:a', 'type:b', 'type:c']);
   });
 });

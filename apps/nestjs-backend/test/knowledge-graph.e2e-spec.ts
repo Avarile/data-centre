@@ -21,6 +21,7 @@ import {
   initApp,
   permanentDeleteBase,
   permanentDeleteTable,
+  updateRecordByApi,
 } from './utils/init-app';
 
 const TAXONOMY_FIELDS = [
@@ -56,6 +57,11 @@ describe('KnowledgeGraph (e2e)', () => {
       type: FieldType.Link,
       options: { relationship: Relationship.ManyOne, foreignTableId: typeTable.id },
     });
+    await createField(typeTable.id, {
+      name: 'parent_type',
+      type: FieldType.Link,
+      options: { relationship: Relationship.ManyOne, foreignTableId: typeTable.id },
+    });
 
     const types = await createRecords(typeTable.id, {
       fieldKeyType: FieldKeyType.Name,
@@ -63,6 +69,16 @@ describe('KnowledgeGraph (e2e)', () => {
     });
     alphaTypeId = types.records[0].id;
     betaTypeId = types.records[1].id;
+
+    // Beta nests under Alpha: parent_type can only be set once both records exist.
+    await updateRecordByApi(
+      typeTable.id,
+      betaTypeId,
+      'parent_type',
+      { id: alphaTypeId },
+      200,
+      FieldKeyType.Name
+    );
 
     const knowledges = await createRecords(knowledgeTable.id, {
       fieldKeyType: FieldKeyType.Name,
@@ -119,13 +135,25 @@ describe('KnowledgeGraph (e2e)', () => {
       knowledgeCount: 4, // five rows, one soft-deleted
       orphanCount: 1,
       nodeCount: 8,
+      // Unchanged from the flat count: Beta's core-type link becomes a
+      // type-parent link under Alpha instead, so the total stays 7.
       linkCount: 7,
       truncated: false,
+      cyclesDropped: 0,
+      maxDepth: 1, // Beta nests one level under Alpha
     });
 
     const typeLabels = data.nodes.filter((n) => n.tier === 'type').map((n) => n.label);
     expect(typeLabels).toContain('Alpha');
     expect(typeLabels).toContain('Beta');
+  });
+
+  it('nests a child type under its parent', async () => {
+    const { data } = await getKnowledgeGraph(baseId);
+    const beta = data.nodes.find((n) => n.recordId === betaTypeId);
+
+    expect(beta).toMatchObject({ parentId: `type:${alphaTypeId}`, depth: 1 });
+    expect(data.links.some((l) => l.tier === 'type-parent')).toBe(true);
   });
 
   it('excludes soft-deleted rows', async () => {

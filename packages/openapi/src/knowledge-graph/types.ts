@@ -77,5 +77,10 @@ export const knowledgeGraphStatsSchema = z.object({
   nodeCount: z.number().int(),
   linkCount: z.number().int(),
   truncated: z.boolean().meta({ description: 'True when the node budget dropped rows.' }),
+  cyclesDropped: z
+    .number()
+    .int()
+    .meta({ description: 'Parent edges cut to keep the type taxonomy acyclic.' }),
+  maxDepth: z.number().int().meta({ description: 'Deepest type nesting level reached.' }),
 });
 export type IKnowledgeGraphStats = z.infer<typeof knowledgeGraphStatsSchema>;
