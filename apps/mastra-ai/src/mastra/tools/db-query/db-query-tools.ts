@@ -1,6 +1,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import { listKnowledges, listKnowledgesByType } from './knowledges/knowledge.js';
+import { listKnowledges } from './knowledges/knowledge.js';
+import { listKnowledgesByTypeName } from './knowledges/knowledge-service.js';
 import { listKnowledgeTypes } from './knowledges/knowledge-type.js';
 import { listGoals } from './project-management/goals.js';
 import { listProjects } from './project-management/projects.js';
@@ -45,7 +46,7 @@ export const listKnowledgesTool = createTool({
   outputSchema: listOutput,
   execute: async ({ take, skip, search, typeName }) => {
     const result = typeName
-      ? await listKnowledgesByType(typeName, { take, skip, search })
+      ? await listKnowledgesByTypeName(typeName, { take, skip, search })
       : await listKnowledges({ take, skip, search });
     return { records: result.records.map(gr), total: result.records.length };
   },

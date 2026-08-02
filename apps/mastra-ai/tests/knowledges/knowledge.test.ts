@@ -84,20 +84,21 @@ describe('getKnowledgeByTitle', () => {
 });
 
 describe('listKnowledgesByType', () => {
-  it('queries with a knowledge_type filter', async () => {
+  it('queries with a knowledge_type filter built from the resolved record ID, not a title', async () => {
     mockList.mockResolvedValue({ records: [sampleRecord] });
-    const result = await listKnowledgesByType('Technical');
+    const result = await listKnowledgesByType('typeRec1');
     const [, params] = mockList.mock.calls[0] as [string, { filter: string }];
     const filter = JSON.parse(params.filter);
     expect(filter.filterSet[0].fieldId).toBe(FIELD_ID_KNOWLEDGE_TYPE);
     expect(filter.filterSet[0].operator).toBe('is');
-    expect(filter.filterSet[0].value).toBe('Technical');
+    // Link fields filter on `jsonb_extract_path_text(cell,'id')` — a title never matches.
+    expect(filter.filterSet[0].value).toBe('typeRec1');
     expect(result.records).toEqual([sampleRecord]);
   });
 
   it('merges additional params with the filter', async () => {
     mockList.mockResolvedValue({ records: [] });
-    await listKnowledgesByType('Technical', { take: 5 });
+    await listKnowledgesByType('typeRec1', { take: 5 });
     const [, params] = mockList.mock.calls[0] as [string, { filter: string; take: number }];
     expect(params.take).toBe(5);
     expect(params.filter).toBeDefined();

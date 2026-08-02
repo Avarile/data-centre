@@ -6,6 +6,7 @@ import {
   GET_KNOWLEDGE_GRAPH,
   getKnowledgeGraph,
   getKnowledgeGraphNode,
+  KNOWLEDGE_NODE_PREFIX,
   UNCLASSIFIED_TYPE_NODE_ID,
   urlBuilder,
 } from '@teable/openapi';
@@ -40,6 +41,7 @@ describe('KnowledgeGraph (e2e)', () => {
   let alphaTypeId = '';
   let betaTypeId = '';
   let activeKnowledgeId = '';
+  let inactiveKnowledgeId = '';
 
   const baseId = globalThis.testConfig.baseId;
 
@@ -61,6 +63,17 @@ describe('KnowledgeGraph (e2e)', () => {
       name: 'parent_type',
       type: FieldType.Link,
       options: { relationship: Relationship.ManyOne, foreignTableId: typeTable.id },
+    });
+    // Self-referencing, two-way (isOneWay omitted/false creates the symmetric
+    // field), ManyMany — mirrors parent_type's self-link but multi-valued.
+    await createField(knowledgeTable.id, {
+      name: 'related_knowledge',
+      type: FieldType.Link,
+      options: {
+        relationship: Relationship.ManyMany,
+        foreignTableId: knowledgeTable.id,
+        isOneWay: false,
+      },
     });
 
     const types = await createRecords(typeTable.id, {
@@ -100,6 +113,19 @@ describe('KnowledgeGraph (e2e)', () => {
       ],
     });
     activeKnowledgeId = knowledges.records[0].id;
+    inactiveKnowledgeId = knowledges.records[1].id;
+
+    // related_knowledge is two-way and self-referencing, so — like
+    // parent_type — it can only be set once both ends already exist. Setting
+    // it from k-active's side populates k-inactive's symmetric field too.
+    await updateRecordByApi(
+      knowledgeTable.id,
+      activeKnowledgeId,
+      'related_knowledge',
+      [{ id: inactiveKnowledgeId }],
+      200,
+      FieldKeyType.Name
+    );
 
     // The config is read once at module init and ConfigModule caches it, so
     // mutating process.env after boot does nothing. registerAs returns a plain
@@ -135,12 +161,15 @@ describe('KnowledgeGraph (e2e)', () => {
       knowledgeCount: 4, // five rows, one soft-deleted
       orphanCount: 1,
       nodeCount: 8,
-      // Unchanged from the flat count: Beta's core-type link becomes a
-      // type-parent link under Alpha instead, so the total stays 7.
-      linkCount: 7,
+      // 7 structural links (core->Alpha, Alpha->Beta type-parent, core->
+      // unclassified, plus one type-knowledge link per emitted knowledge) +
+      // 1 knowledge-knowledge link for the k-active<->k-inactive relation.
+      linkCount: 8,
       truncated: { nodes: false, links: false },
       cyclesDropped: 0,
       maxDepth: 1, // Beta nests one level under Alpha
+      relationCount: 1, // the single k-active<->k-inactive relation
+      danglingRelations: 0,
     });
 
     const typeLabels = data.nodes.filter((n) => n.tier === 'type').map((n) => n.label);
@@ -193,6 +222,25 @@ describe('KnowledgeGraph (e2e)', () => {
     expect(data.parentId).toBe(`type:${alphaTypeId}`);
     expect(data.ancestors).toEqual([{ id: `type:${alphaTypeId}`, label: 'Alpha' }]);
     expect(data.createdTime).not.toBeNull();
+    // k-active <-> k-inactive is the one related_knowledge relation in the fixture.
+    expect(data.relatedCount).toBe(1);
+  });
+
+  it('emits a knowledge-knowledge link for a related_knowledge relation', async () => {
+    const { data } = await getKnowledgeGraph(baseId);
+
+    const relationLinks = data.links.filter((l) => l.tier === 'knowledge-knowledge');
+    expect(relationLinks).toHaveLength(1);
+
+    const endpoints = [relationLinks[0].source, relationLinks[0].target].sort();
+    const expectedEndpoints = [
+      `${KNOWLEDGE_NODE_PREFIX}${activeKnowledgeId}`,
+      `${KNOWLEDGE_NODE_PREFIX}${inactiveKnowledgeId}`,
+    ].sort();
+    expect(endpoints).toEqual(expectedEndpoints);
+
+    expect(data.stats.relationCount).toBe(1);
+    expect(data.stats.danglingRelations).toBe(0);
   });
 
   it('builds a root-first ancestor chain for a nested type', async () => {

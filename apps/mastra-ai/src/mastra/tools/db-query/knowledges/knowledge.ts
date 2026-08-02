@@ -74,13 +74,19 @@ export async function getKnowledgeByTitle(title: string): Promise<KnowledgeRecor
   return result.records[0];
 }
 
+/**
+ * Filters by the knowledge_type record ID, not its title. Once knowledge_type is a
+ * Link field, Teable's `is` filter on it compares `jsonb_extract_path_text(cell,'id')`
+ * — a title value never matches, so the caller must resolve the title to a record ID
+ * first (see `getKnowledgeTypeByTitle` / `knowledge-service.ts#getKnowledgesByType`).
+ */
 export async function listKnowledgesByType(
-  typeName: string,
+  typeId: string,
   params?: Omit<ListParams, 'filter'>
 ): Promise<{ records: KnowledgeRecord[] }> {
   const filter = JSON.stringify({
     conjunction: 'and',
-    filterSet: [{ fieldId: FIELD_IDS.knowledge_type, operator: 'is', value: typeName }],
+    filterSet: [{ fieldId: FIELD_IDS.knowledge_type, operator: 'is', value: typeId }],
   });
   return teableList<KnowledgeFields>(TABLE_ID, { ...params, filter });
 }

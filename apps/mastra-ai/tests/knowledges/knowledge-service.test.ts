@@ -27,6 +27,7 @@ import {
   createKnowledgeWithType,
   getKnowledgesWithType,
   getKnowledgesByType,
+  listKnowledgesByTypeName,
 } from '../../src/mastra/tools/db-query/knowledges/knowledge-service.js';
 
 const mockGetByTitle = vi.mocked(getKnowledgeTypeByTitle);
@@ -171,30 +172,56 @@ describe('getKnowledgesWithType', () => {
 });
 
 describe('getKnowledgesByType', () => {
-  it('fetches knowledges by type and attaches the type record', async () => {
+  it('resolves the title to a record ID once, then filters knowledge_type on that ID', async () => {
     const typeRec = { id: 'typeRec1', fields: { title: 'Technical' } };
     const kRec = { id: 'knRec1', fields: { title: 'Deploy', knowledge_type: 'Technical' } };
-    mockListByType.mockResolvedValue({ records: [kRec] });
     mockGetByTitle.mockResolvedValue(typeRec);
+    mockListByType.mockResolvedValue({ records: [kRec] });
+
     const result = await getKnowledgesByType('Technical');
-    expect(mockListByType).toHaveBeenCalledWith('Technical');
+
     expect(mockGetByTitle).toHaveBeenCalledWith('Technical');
+    // The Link field filter must use the resolved record ID, never the title.
+    expect(mockListByType).toHaveBeenCalledWith('typeRec1');
+    expect(mockGetByTitle).toHaveBeenCalledTimes(1);
     expect(result[0].knowledge).toEqual(kRec);
     expect(result[0].type).toEqual(typeRec);
   });
 
   it('returns empty array when no knowledges match', async () => {
-    mockListByType.mockResolvedValue({ records: [] });
     mockGetByTitle.mockResolvedValue(existingType);
+    mockListByType.mockResolvedValue({ records: [] });
     const result = await getKnowledgesByType('Technical');
     expect(result).toEqual([]);
   });
 
-  it('attaches undefined type when the type does not exist', async () => {
-    const kRec = { id: 'knRec1', fields: { title: 'Deploy', knowledge_type: 'Ghost' } };
-    mockListByType.mockResolvedValue({ records: [kRec] });
+  it('returns an empty list without querying knowledge_type when the title is unknown', async () => {
     mockGetByTitle.mockResolvedValue(undefined);
     const result = await getKnowledgesByType('Ghost');
-    expect(result[0].type).toBeUndefined();
+    expect(result).toEqual([]);
+    // Filtering on an unresolved title would either match everything or throw — never issue it.
+    expect(mockListByType).not.toHaveBeenCalled();
+  });
+});
+
+describe('listKnowledgesByTypeName', () => {
+  it('resolves the title once and filters on the record ID', async () => {
+    const typeRec = { id: 'typeRec1', fields: { title: 'Technical' } };
+    const kRec = { id: 'knRec1', fields: { title: 'Deploy', knowledge_type: 'Technical' } };
+    mockGetByTitle.mockResolvedValue(typeRec);
+    mockListByType.mockResolvedValue({ records: [kRec] });
+
+    const result = await listKnowledgesByTypeName('Technical', { take: 5 });
+
+    expect(mockGetByTitle).toHaveBeenCalledWith('Technical');
+    expect(mockListByType).toHaveBeenCalledWith('typeRec1', { take: 5 });
+    expect(result.records).toEqual([kRec]);
+  });
+
+  it('returns an empty list without querying knowledge_type when the title is unknown', async () => {
+    mockGetByTitle.mockResolvedValue(undefined);
+    const result = await listKnowledgesByTypeName('Ghost');
+    expect(result).toEqual({ records: [] });
+    expect(mockListByType).not.toHaveBeenCalled();
   });
 });

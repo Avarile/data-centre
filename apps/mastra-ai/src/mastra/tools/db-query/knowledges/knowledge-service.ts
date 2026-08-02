@@ -12,6 +12,7 @@ import {
   type KnowledgeFields,
 } from './knowledge.js';
 import { linkTitle } from './link-cell.js';
+import type { ListParams } from '../teable-client.js';
 
 export interface KnowledgeWithType {
   knowledge: KnowledgeRecord;
@@ -65,12 +66,29 @@ export async function getKnowledgesWithType(): Promise<KnowledgeWithType[]> {
 
 /**
  * Fetches knowledges of a specific type, with the type record attached.
+ * Resolves the type title to its record ID once — knowledge_type is a Link field,
+ * so `listKnowledgesByType` must filter on the record ID, never the title (see
+ * knowledge.ts#listKnowledgesByType). An unknown title returns an empty list rather
+ * than querying with an unresolved id.
  */
 export async function getKnowledgesByType(typeName: string): Promise<KnowledgeWithType[]> {
-  const [knowledgesResult, type] = await Promise.all([
-    listKnowledgesByType(typeName),
-    getKnowledgeTypeByTitle(typeName),
-  ]);
+  const type = await getKnowledgeTypeByTitle(typeName);
+  if (!type) return [];
 
-  return knowledgesResult.records.map((knowledge) => ({ knowledge, type }));
+  const { records } = await listKnowledgesByType(type.id);
+  return records.map((knowledge) => ({ knowledge, type }));
+}
+
+/**
+ * Same type-title resolution as `getKnowledgesByType`, but returns bare knowledge
+ * records (no joined type) for callers that only need the list, e.g. the
+ * `list-knowledges` tool's optional typeName filter.
+ */
+export async function listKnowledgesByTypeName(
+  typeName: string,
+  params?: Omit<ListParams, 'filter'>
+): Promise<{ records: KnowledgeRecord[] }> {
+  const type = await getKnowledgeTypeByTitle(typeName);
+  if (!type) return { records: [] };
+  return listKnowledgesByType(type.id, params);
 }

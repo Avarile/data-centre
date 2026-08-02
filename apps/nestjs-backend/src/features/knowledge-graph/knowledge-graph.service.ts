@@ -16,7 +16,8 @@ import { CustomHttpException } from '../../custom.exception';
 import { PermissionService } from '../auth/permission.service';
 import { RecordService } from '../record/record.service';
 import type { IKnowledgeRow, IKnowledgeTypeRow } from './knowledge-graph.assembler';
-import { assembleKnowledgeGraph } from './knowledge-graph.assembler';
+import { assembleKnowledgeGraph, byTitleThenId } from './knowledge-graph.assembler';
+import { breakCycles } from './knowledge-type-tree';
 import type { IFieldSpec, IResolvedField } from './types';
 import { KNOWLEDGE_FIELD, KNOWLEDGE_TYPE_FIELD_TYPES, PARENT_TYPE_FIELD_TYPES } from './types';
 
@@ -148,6 +149,15 @@ export class KnowledgeGraphService {
     const types = await this.readTypes(knowledgeTypeTableId);
     const byRecordId = new Map(types.map((t) => [t.recordId, t]));
 
+    // Same sort + breakCycles as assembleKnowledgeGraph, so a cycle in
+    // parent_type resolves to the identical parent here as it does in the
+    // graph endpoint — walking raw parentRecordId with only a `seen` guard
+    // used to let this endpoint cut a different edge (or none at all) and
+    // report a breadcrumb the graph disagreed with, even one containing the
+    // node itself.
+    const sortedTypes = [...types].sort(byTitleThenId);
+    const { parentOf } = breakCycles(sortedTypes);
+
     const chainFrom = (startRecordId: string | null): { id: string; label: string }[] => {
       const chain: { id: string; label: string }[] = [];
       const seen = new Set<string>();
@@ -157,7 +167,7 @@ export class KnowledgeGraphService {
         const node = byRecordId.get(current);
         if (!node) break;
         chain.unshift({ id: `${TYPE_NODE_PREFIX}${node.recordId}`, label: node.title });
-        current = node.parentRecordId;
+        current = parentOf.get(current) ?? null;
       }
       return chain;
     };
@@ -166,10 +176,13 @@ export class KnowledgeGraphService {
       ? extractLinkRecordId(record.fields[knowledgeTypeField.id])
       : null;
 
+    // For tier 'type', start from parentOf — the resolved (cycle-broken)
+    // parent — not the raw parentRecordId field: when this very node is the
+    // one whose own edge breakCycles cuts, the raw field still points at its
+    // old parent and the chain would wrongly include it (or, for a two-cycle,
+    // report the node as its own grandparent).
     const ancestors =
-      tier === 'knowledge'
-        ? chainFrom(typeRecordId)
-        : chainFrom(byRecordId.get(recordId)?.parentRecordId ?? null);
+      tier === 'knowledge' ? chainFrom(typeRecordId) : chainFrom(parentOf.get(recordId) ?? null);
     const parent = ancestors[ancestors.length - 1] ?? null;
 
     const relatedCount =
