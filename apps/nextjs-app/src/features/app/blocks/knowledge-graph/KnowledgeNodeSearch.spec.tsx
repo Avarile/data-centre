@@ -8,7 +8,6 @@ const node = (id: string, label: string): IKnowledgeGraphNode => ({
   recordId: id.replace('kn:', ''),
   tier: 'knowledge',
   label,
-  typeId: 'type:t1',
   parentId: 'type:t1',
   rootTypeId: 'type:t1',
   depth: 1,

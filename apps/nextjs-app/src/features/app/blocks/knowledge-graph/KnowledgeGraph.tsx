@@ -163,7 +163,7 @@ export const KnowledgeGraph = () => {
         />
       )}
 
-      {data?.stats.truncated && (
+      {data?.stats.truncated.nodes && (
         <div className="shrink-0 border-b bg-amber-50 px-4 py-1 text-[11px] text-amber-900 dark:bg-amber-950 dark:text-amber-200">
           {t('knowledgeGraph:truncated.banner', { count: data.stats.knowledgeCount })}
         </div>

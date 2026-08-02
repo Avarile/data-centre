@@ -274,16 +274,21 @@ const buildRelations = (
  * Slices the deduped relation pairs down to whatever budget remains after
  * structural links, and turns the survivors into knowledge-knowledge links.
  * Structural links are never dropped: without the taxonomy the layout loses
- * its skeleton, so only relations are truncated. Split out of
+ * its skeleton, so only relations are truncated by the link budget — the
+ * node budget (see `truncated` in assembleKnowledgeGraph) is a separate
+ * dimension the caller reports independently. Split out of
  * assembleKnowledgeGraph purely to keep that function's cognitive complexity
  * in check — no behaviour differs from the inline version.
  */
 const buildRelationLinks = (
   pairs: { source: string; target: string }[],
   maxLinks: number,
-  structuralLinkCount: number,
-  nodesTruncated: boolean
-): { relationLinks: IKnowledgeGraphLink[]; relationCount: number; truncated: boolean } => {
+  structuralLinkCount: number
+): {
+  relationLinks: IKnowledgeGraphLink[];
+  relationCount: number;
+  relationsTruncated: boolean;
+} => {
   const roomForRelations = Math.max(0, maxLinks - structuralLinkCount);
   const relationsTruncated = pairs.length > roomForRelations;
   const emittedPairs = relationsTruncated ? pairs.slice(0, roomForRelations) : pairs;
@@ -299,7 +304,7 @@ const buildRelationLinks = (
   return {
     relationLinks,
     relationCount: emittedPairs.length,
-    truncated: nodesTruncated || relationsTruncated,
+    relationsTruncated,
   };
 };
 
@@ -389,7 +394,6 @@ export const assembleKnowledgeGraph = (
       recordId: null,
       tier: 'core',
       label: coreLabel,
-      typeId: null,
       parentId: null,
       rootTypeId: null,
       // Depth is undefined for a node outside the taxonomy; 0 is the neutral
@@ -406,7 +410,6 @@ export const assembleKnowledgeGraph = (
       recordId: type.recordId,
       tier: 'type',
       label: type.title,
-      typeId: null,
       parentId: parentNodeIdOf(type.recordId),
       rootTypeId: rootNodeIdOf(type.recordId),
       depth: depthOf.get(type.recordId) ?? 0,
@@ -420,7 +423,6 @@ export const assembleKnowledgeGraph = (
       recordId: null,
       tier: 'type',
       label: unclassifiedLabel,
-      typeId: null,
       parentId: KNOWLEDGE_CORE_NODE_ID,
       rootTypeId: UNCLASSIFIED_TYPE_NODE_ID,
       depth: 0,
@@ -446,7 +448,6 @@ export const assembleKnowledgeGraph = (
       recordId: row.recordId,
       tier: 'knowledge',
       label: row.title,
-      typeId: bucket,
       parentId: bucket,
       rootTypeId: rootOfBucket(bucket),
       depth: depthOfBucket(bucket) + 1,
@@ -468,11 +469,11 @@ export const assembleKnowledgeGraph = (
 
   // Relations share the same `maxLinks` budget as the structural links above,
   // but never displace them — see buildRelationLinks.
-  const {
-    relationLinks,
-    relationCount,
-    truncated: overallTruncated,
-  } = buildRelationLinks(pairs, maxLinks, links.length, truncated);
+  const { relationLinks, relationCount, relationsTruncated } = buildRelationLinks(
+    pairs,
+    maxLinks,
+    links.length
+  );
   links.push(...relationLinks);
 
   return {
@@ -484,7 +485,7 @@ export const assembleKnowledgeGraph = (
       orphanCount,
       nodeCount: nodes.length,
       linkCount: links.length,
-      truncated: overallTruncated,
+      truncated: { nodes: truncated, links: relationsTruncated },
       cyclesDropped,
       maxDepth,
       relationCount,

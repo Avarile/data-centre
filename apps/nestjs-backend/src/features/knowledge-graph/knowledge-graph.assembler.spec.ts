@@ -44,7 +44,6 @@ describe('assembleKnowledgeGraph', () => {
       recordId: null,
       tier: 'core',
       label: OPTS.coreLabel,
-      typeId: null,
       parentId: null,
       rootTypeId: null,
       depth: 0,
@@ -57,7 +56,7 @@ describe('assembleKnowledgeGraph', () => {
       orphanCount: 0,
       nodeCount: 1,
       linkCount: 0,
-      truncated: false,
+      truncated: { nodes: false, links: false },
       cyclesDropped: 0,
       maxDepth: 0,
       relationCount: 0,
@@ -85,7 +84,7 @@ describe('assembleKnowledgeGraph', () => {
     );
 
     const node = graph.nodes.find((n) => n.id === 'kn:recK1');
-    expect(node).toMatchObject({ tier: 'knowledge', typeId: 'type:recT1', recordId: 'recK1' });
+    expect(node).toMatchObject({ tier: 'knowledge', parentId: 'type:recT1', recordId: 'recK1' });
 
     const childLinks = graph.links.filter((l) => l.tier === 'type-knowledge');
     expect(childLinks).toEqual([
@@ -109,7 +108,7 @@ describe('assembleKnowledgeGraph', () => {
     expect(unclassified).toHaveLength(1);
     expect(unclassified[0]).toMatchObject({ tier: 'type', recordId: null, degree: 3 });
 
-    const orphanNodes = graph.nodes.filter((n) => n.typeId === UNCLASSIFIED_TYPE_NODE_ID);
+    const orphanNodes = graph.nodes.filter((n) => n.parentId === UNCLASSIFIED_TYPE_NODE_ID);
     expect(orphanNodes).toHaveLength(3);
     expect(graph.stats.orphanCount).toBe(3);
   });
@@ -162,7 +161,7 @@ describe('assembleKnowledgeGraph', () => {
       maxKnowledgeNodes: 3,
     });
 
-    expect(graph.stats.truncated).toBe(true);
+    expect(graph.stats.truncated).toEqual({ nodes: true, links: false });
     expect(graph.stats.knowledgeCount).toBe(3);
     expect(graph.nodes.filter((n) => n.tier === 'knowledge')).toHaveLength(3);
   });
@@ -179,7 +178,7 @@ describe('assembleKnowledgeGraph', () => {
       { ...OPTS, maxKnowledgeNodes: 2 }
     );
 
-    expect(graph.stats.truncated).toBe(true);
+    expect(graph.stats.truncated).toEqual({ nodes: true, links: false });
     expect(graph.stats.orphanCount).toBe(0);
     expect(graph.nodes.some((n) => n.id === UNCLASSIFIED_TYPE_NODE_ID)).toBe(false);
     expect(graph.links.some((l) => l.target === UNCLASSIFIED_TYPE_NODE_ID)).toBe(false);
@@ -199,7 +198,7 @@ describe('assembleKnowledgeGraph', () => {
     }
   });
 
-  it('gives every knowledge node a typeId that resolves to an emitted type node', () => {
+  it('gives every knowledge node a parentId that resolves to an emitted type node', () => {
     const graph = assembleKnowledgeGraph(
       [type('recT1', 'Alpha'), type('recT2', 'Beta')],
       [
@@ -216,8 +215,8 @@ describe('assembleKnowledgeGraph', () => {
 
     expect(knowledgeNodes).toHaveLength(4);
     for (const node of knowledgeNodes) {
-      expect(node.typeId).not.toBeNull();
-      expect(typeIds.has(node.typeId as string)).toBe(true);
+      expect(node.parentId).not.toBeNull();
+      expect(typeIds.has(node.parentId as string)).toBe(true);
     }
   });
 
@@ -443,7 +442,7 @@ describe('relations', () => {
 
     expect(graph.links.filter((l) => l.tier !== KNOWLEDGE_KNOWLEDGE)).toHaveLength(4);
     expect(graph.links.filter((l) => l.tier === KNOWLEDGE_KNOWLEDGE)).toHaveLength(1);
-    expect(graph.stats.truncated).toBe(true);
+    expect(graph.stats.truncated).toEqual({ nodes: false, links: true });
   });
 
   it('orders relations deterministically', () => {

@@ -41,8 +41,6 @@ export const knowledgeGraphNodeSchema = z.object({
   recordId: z.string().nullable().meta({ description: 'Record id; null for synthetic nodes.' }),
   tier: knowledgeNodeTierSchema.meta({ description: 'Which tier this node belongs to.' }),
   label: z.string().meta({ description: 'Display title.' }),
-  /** @deprecated superseded by parentId; removed in Task 10. */
-  typeId: z.string().nullable(),
   parentId: z.string().nullable().meta({
     description:
       'Structural parent: a type points at its parent type (or core at a root), a knowledge at its type.',
@@ -76,7 +74,12 @@ export const knowledgeGraphStatsSchema = z.object({
     .meta({ description: 'Emitted knowledges with no resolvable type.' }),
   nodeCount: z.number().int(),
   linkCount: z.number().int(),
-  truncated: z.boolean().meta({ description: 'True when the node budget dropped rows.' }),
+  truncated: z
+    .object({
+      nodes: z.boolean().meta({ description: 'The node budget dropped knowledges.' }),
+      links: z.boolean().meta({ description: 'The link budget dropped relations.' }),
+    })
+    .meta({ description: 'Per-dimension truncation; structural links are never dropped.' }),
   cyclesDropped: z
     .number()
     .int()

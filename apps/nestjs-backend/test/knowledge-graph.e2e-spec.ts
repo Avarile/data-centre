@@ -138,7 +138,7 @@ describe('KnowledgeGraph (e2e)', () => {
       // Unchanged from the flat count: Beta's core-type link becomes a
       // type-parent link under Alpha instead, so the total stays 7.
       linkCount: 7,
-      truncated: false,
+      truncated: { nodes: false, links: false },
       cyclesDropped: 0,
       maxDepth: 1, // Beta nests one level under Alpha
     });
@@ -177,7 +177,7 @@ describe('KnowledgeGraph (e2e)', () => {
     const { data } = await getKnowledgeGraph(baseId);
 
     const orphan = data.nodes.find((n) => n.label === 'k-orphan');
-    expect(orphan?.typeId).toBe(UNCLASSIFIED_TYPE_NODE_ID);
+    expect(orphan?.parentId).toBe(UNCLASSIFIED_TYPE_NODE_ID);
     expect(data.nodes.filter((n) => n.id === UNCLASSIFIED_TYPE_NODE_ID)).toHaveLength(1);
     expect(
       data.links.filter((l) => l.source === 'core' && l.target === UNCLASSIFIED_TYPE_NODE_ID)
