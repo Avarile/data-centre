@@ -6,7 +6,7 @@
 
 **Architecture:** Three new/changed Teable link fields drive everything. The backend assembler (`knowledge-graph.assembler.ts`) stays the single pure place where graph shape is decided and grows four steps: break cycles in the type tree, compute depth and root ancestor, emit structural links, emit deduped relations under a link budget. The published contract replaces the overloaded `typeId` with `parentId` (structure), `rootTypeId` (colour) and `depth`. The frontend derives its type filter from the `parentId` closure instead of a single-parent equality check.
 
-**Tech Stack:** NestJS + Teable RecordService (backend), zod + `@asteasolutions/zod-to-openapi` (contract), React + zustand + react-force-graph-3d (frontend), Mastra + raw `fetch` against the Teable REST API (AI agent), vitest (frontend + mastra), jest (backend).
+**Tech Stack:** NestJS + Teable RecordService (backend), zod + `@asteasolutions/zod-to-openapi` (contract), React + zustand + react-force-graph-3d (frontend), Mastra + raw `fetch` against the Teable REST API (AI agent), vitest everywhere (backend, frontend and mastra all use vitest 4; there is no jest in this repo).
 
 ## Global Constraints
 
@@ -19,6 +19,8 @@
 - Cycle-breaking must be **deterministic** — the same back-edge on every run. The ETag in `getGraph` is a sha1 over the whole payload, so nondeterminism there means the ETag churns between identical requests.
 - No `Co-Authored-By` trailer on commits (`.claude/settings.json` has no `attribution.commit`).
 - Do not `git add -A`: `scripts/customized/developments/current-goal.md` and `.claude-flow/data/pending-insights.jsonl` are unrelated dirty files. Stage explicit paths.
+- Backend, frontend and mastra all run **vitest 4**. There is no jest in this repo — `npx vitest run <path>` for unit tests, `pnpm test-e2e` for e2e.
+- e2e tests need a seeded Postgres (`pre-test-e2e` runs `prisma-db-seed --e2e`). Where the environment has no database, write the e2e assertions as the task specifies and record the run as deferred in the ledger — do not delete or weaken the test to make a command pass.
 - Locale files are English-only placeholders today (`de`, `zh`, `ja` all read "Types"). New keys go into all 10 locales with the English string.
 
 ## File Structure
@@ -108,7 +110,7 @@ describe('v2 node fields', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd apps/nestjs-backend && npx jest src/features/knowledge-graph/knowledge-graph.assembler.spec.ts -t "v2 node fields"`
+Run: `cd apps/nestjs-backend && npx vitest run src/features/knowledge-graph/knowledge-graph.assembler.spec.ts -t "v2 node fields"`
 Expected: FAIL — the returned nodes have no `parentId`/`rootTypeId`/`depth` keys, so `toMatchObject` reports undefined.
 
 - [ ] **Step 3: Extend the contract**
@@ -230,7 +232,7 @@ and each knowledge:
 
 - [ ] **Step 5: Run the tests**
 
-Run: `cd apps/nestjs-backend && npx jest src/features/knowledge-graph/`
+Run: `cd apps/nestjs-backend && npx vitest run src/features/knowledge-graph/`
 Expected: PASS, including the pre-existing cases — nothing above changes counts or ordering.
 
 - [ ] **Step 6: Update the e2e version assertions**
@@ -798,7 +800,7 @@ describe('nested types', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd apps/nestjs-backend && npx jest src/features/knowledge-graph/knowledge-graph.assembler.spec.ts -t "nested types"`
+Run: `cd apps/nestjs-backend && npx vitest run src/features/knowledge-graph/knowledge-graph.assembler.spec.ts -t "nested types"`
 Expected: FAIL — `parentRecordId` is not a property of `IKnowledgeTypeRow`, so the file does not even compile.
 
 - [ ] **Step 3: Split the row interfaces and add the parent**
@@ -1140,7 +1142,7 @@ and return it from `readTypes`:
 
 - [ ] **Step 7: Run the tests**
 
-Run: `cd apps/nestjs-backend && npx jest src/features/knowledge-graph/`
+Run: `cd apps/nestjs-backend && npx vitest run src/features/knowledge-graph/`
 Expected: PASS, all suites.
 
 - [ ] **Step 8: Extend the e2e fixture with a nested type**
@@ -1171,7 +1173,7 @@ Update the existing counts: `typeCount` is unchanged at 3, but the `core-type` l
 
 - [ ] **Step 9: Run the e2e suite**
 
-Run: `cd apps/nestjs-backend && npx jest --config ./test/jest-e2e.json knowledge-graph`
+Run: `cd apps/nestjs-backend && pnpm test-e2e -- knowledge-graph`
 Expected: PASS.
 
 - [ ] **Step 10: Commit**
@@ -1284,7 +1286,7 @@ Add `maxLinks: 100` to the shared `OPTS` object so the existing suites still typ
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd apps/nestjs-backend && npx jest src/features/knowledge-graph/knowledge-graph.assembler.spec.ts -t "relations"`
+Run: `cd apps/nestjs-backend && npx vitest run src/features/knowledge-graph/knowledge-graph.assembler.spec.ts -t "relations"`
 Expected: FAIL — `relatedRecordIds` and `maxLinks` are not on the interfaces.
 
 - [ ] **Step 3: Extend the interfaces**
@@ -1435,7 +1437,7 @@ In `apps/nestjs-backend/src/configs/knowledge.config.ts`:
 
 - [ ] **Step 8: Run the tests**
 
-Run: `cd apps/nestjs-backend && npx jest src/features/knowledge-graph/`
+Run: `cd apps/nestjs-backend && npx vitest run src/features/knowledge-graph/`
 Expected: PASS.
 
 - [ ] **Step 9: Commit**
@@ -1557,7 +1559,7 @@ For a knowledge node, `ancestors` is `chainFrom(typeRecordId)`; for a type node 
 
 - [ ] **Step 5: Run the backend tests**
 
-Run: `cd apps/nestjs-backend && npx jest src/features/knowledge-graph/ && npx jest --config ./test/jest-e2e.json knowledge-graph`
+Run: `cd apps/nestjs-backend && npx vitest run src/features/knowledge-graph/ && pnpm test-e2e -- knowledge-graph`
 Expected: PASS. The e2e detail assertions need updating from `typeId`/`typeLabel` to `parentId`/`ancestors`.
 
 - [ ] **Step 6: Commit**
@@ -1904,7 +1906,7 @@ and the Task 6 truncation test asserts `truncated: { nodes: false, links: true }
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cd apps/nestjs-backend && npx jest src/features/knowledge-graph/`
+Run: `cd apps/nestjs-backend && npx vitest run src/features/knowledge-graph/`
 Expected: FAIL — extra `typeId` key, and `truncated` is a boolean.
 
 - [ ] **Step 3: Drop the field and split the flag**
@@ -1934,7 +1936,7 @@ and in the assembler return `truncated: { nodes: truncated, links: relationsTrun
 
 Run:
 ```bash
-cd apps/nestjs-backend && npx jest src/features/knowledge-graph/ && npx jest --config ./test/jest-e2e.json knowledge-graph
+cd apps/nestjs-backend && npx vitest run src/features/knowledge-graph/ && pnpm test-e2e -- knowledge-graph
 cd ../nextjs-app && npx vitest run src/features/app/blocks/knowledge-graph && npx tsc --noEmit -p tsconfig.json && npx eslint src/features/app/blocks/knowledge-graph --ext .ts,.tsx
 ```
 Expected: all PASS. A `typeId` reference surviving anywhere shows up here as a typecheck error.
