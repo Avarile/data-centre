@@ -29,6 +29,8 @@
   },
   "detail": {
     "context": "Context",
+    "path": "Path",
+    "related": "{{count}} related knowledges",
     "type": "Type",
     "siblings": "{{count}} sibling knowledges",
     "created": "Created {{time}}",

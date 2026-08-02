@@ -40,9 +40,14 @@ export const KnowledgeNodeDetailPanel = (props: IKnowledgeNodeDetailPanelProps) 
           ) : (
             <h2 className="truncate text-sm font-semibold">{data?.label ?? nodeId}</h2>
           )}
-          {data?.parentLabel && (
+          {data?.ancestors && data.ancestors.length > 0 && (
             <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-              {t('knowledgeGraph:detail.type')}: {data.parentLabel}
+              {t('knowledgeGraph:detail.path')}: {data.ancestors.map((a) => a.label).join(' / ')}
+            </p>
+          )}
+          {Boolean(data?.relatedCount) && (
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {t('knowledgeGraph:detail.related', { count: data?.relatedCount })}
             </p>
           )}
         </div>

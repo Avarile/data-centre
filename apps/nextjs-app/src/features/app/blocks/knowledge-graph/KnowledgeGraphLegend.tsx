@@ -65,8 +65,11 @@ export const KnowledgeGraphLegend = (props: IKnowledgeGraphLegendProps) => {
               type="button"
               onClick={() => onToggleType(type.id)}
               aria-pressed={!hidden}
+              // paddingLeft, not a nested list: the row height must stay exactly
+              // h-6 for the VISIBLE_ROWS cap above to mean what it says.
+              style={{ paddingLeft: `${0.5 + type.depth * 0.75}rem` }}
               className={cn(
-                'flex h-6 w-full items-center gap-2 rounded px-2 text-left text-xs hover:bg-accent',
+                'flex h-6 w-full items-center gap-2 rounded pr-2 text-left text-xs hover:bg-accent',
                 hidden && 'opacity-40'
               )}
             >

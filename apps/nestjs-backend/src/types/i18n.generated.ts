@@ -1823,6 +1823,8 @@ export type I18nTranslations = {
         };
         "detail": {
             "context": string;
+            "path": string;
+            "related": string;
             "type": string;
             "siblings": string;
             "created": string;
