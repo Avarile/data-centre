@@ -148,6 +148,16 @@ export const LINK_STRENGTH: Record<KnowledgeLinkTier, number> = {
   // 0.05, the strength type-knowledge's own distance would suggest by
   // analogy, measured outward bias above 0.15 at the 1000-node budget and is
   // not used here.
+  //
+  // 0.005 is not the sweep's best-measured value — it is the largest value
+  // that still reads as a tether rather than a placement force, chosen to
+  // match core-type for the same reason. Smaller values also pass and some
+  // measure marginally better: 0.002 held outward bias to 0.101-0.106 (vs
+  // 0.005's 0.120-0.129 in that same distance sweep) with an equal or better
+  // type-gap ratio at the 1000-node budget. Re-deriving a "better" number from
+  // the sweep alone is not a sign this value has drifted; it is choosing
+  // between several passing candidates on different grounds than the sweep
+  // optimizes for.
   'knowledge-knowledge': 0.005,
 };
 export const DEFAULT_LINK_STRENGTH = 0.3;
