@@ -7,6 +7,7 @@ import {
   type TeableRecord,
   type ListParams,
 } from '../teable-client.js';
+import type { LinkCell } from './link-cell.js';
 
 const TABLE_ID = 'tblVTWb1kxXSFPBq4Fq';
 
@@ -21,8 +22,10 @@ export interface KnowledgeFields {
   context?: string;
   is_active?: boolean;
   deleted_at?: string;
-  /** Stores the title of the linked knowledge_type record */
-  knowledge_type?: string;
+  /** Link cell after the v2 migration, a bare title before it. Read with linkTitle(). */
+  knowledge_type?: LinkCell;
+  /** Two-way self-link, v2. Read with linkIds(). */
+  related_knowledge?: LinkCell[];
   // read-only
   id?: number;
   created_at?: string;
@@ -32,11 +35,16 @@ export interface KnowledgeFields {
 export type KnowledgeRecord = TeableRecord<KnowledgeFields>;
 
 type CreateInput = Pick<KnowledgeFields, 'title'> &
-  Partial<Pick<KnowledgeFields, 'context' | 'is_active' | 'deleted_at' | 'knowledge_type'>>;
+  Partial<Pick<KnowledgeFields, 'context' | 'is_active' | 'deleted_at'>> & {
+    /** A title; typecast turns it into a link. */
+    knowledge_type?: string;
+  };
 
 type UpdateInput = Partial<
-  Pick<KnowledgeFields, 'title' | 'context' | 'is_active' | 'deleted_at' | 'knowledge_type'>
->;
+  Pick<KnowledgeFields, 'title' | 'context' | 'is_active' | 'deleted_at'>
+> & {
+  knowledge_type?: string;
+};
 
 export function listKnowledges(params?: ListParams): Promise<{ records: KnowledgeRecord[] }> {
   return teableList<KnowledgeFields>(TABLE_ID, params);

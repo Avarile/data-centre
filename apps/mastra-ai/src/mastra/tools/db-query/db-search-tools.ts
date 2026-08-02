@@ -1,6 +1,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { searchKnowledgesByTitle, getKnowledgesByIds } from './knowledges/knowledge.js';
+import { linkTitle } from './knowledges/link-cell.js';
 import { searchGoalsByTitle, getGoalsByIds } from './project-management/goals.js';
 import { searchProjectsByTitle, getProjectsByIds } from './project-management/projects.js';
 import { searchTasksByTitle, getTasksByIds } from './project-management/tasks.js';
@@ -49,7 +50,7 @@ export const searchKnowledgeTitlesTool = createTool({
       results: result.records.map((r) => ({
         id: r.id,
         title: String(r.fields.title ?? ''),
-        knowledge_type: r.fields.knowledge_type ? String(r.fields.knowledge_type) : undefined,
+        knowledge_type: linkTitle(r.fields.knowledge_type),
       })),
       total: result.records.length,
     };
@@ -132,7 +133,7 @@ export const getKnowledgeContextsTool = createTool({
         id: r.id,
         title: String(r.fields.title ?? ''),
         context: r.fields.context ? String(r.fields.context) : undefined,
-        knowledge_type: r.fields.knowledge_type ? String(r.fields.knowledge_type) : undefined,
+        knowledge_type: linkTitle(r.fields.knowledge_type),
       })),
     };
   },

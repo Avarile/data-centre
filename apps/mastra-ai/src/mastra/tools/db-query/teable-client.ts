@@ -53,6 +53,9 @@ export async function teableCreate<T>(
     headers: authHeaders(),
     body: JSON.stringify({
       fieldKeyType: 'name',
+      // Coerces a title string into a link cell. Without this every write to a
+      // link column fails once knowledge_type stops being plain text.
+      typecast: true,
       records: fields.map((f) => ({ fields: f })),
     }),
   });
@@ -68,7 +71,7 @@ export async function teableUpdate<T>(
   const res = await fetch(`${BASE_URL}/api/table/${tableId}/record/${recordId}`, {
     method: 'PATCH',
     headers: authHeaders(),
-    body: JSON.stringify({ fieldKeyType: 'name', record: { fields } }),
+    body: JSON.stringify({ fieldKeyType: 'name', typecast: true, record: { fields } }),
   });
   if (!res.ok)
     throw new Error(`PATCH table/${tableId}/${recordId}: ${res.status} ${res.statusText}`);

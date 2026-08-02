@@ -6,6 +6,7 @@ import {
   type TeableRecord,
   type ListParams,
 } from '../teable-client.js';
+import type { LinkCell } from './link-cell.js';
 
 const TABLE_ID = 'tblWcq6Kof1AFHvbC5e';
 
@@ -19,6 +20,8 @@ export interface KnowledgeTypeFields {
   context?: string;
   is_active?: boolean;
   deleted_at?: string;
+  /** Self-link to the parent type, v2. Empty means this type is a root. */
+  parent_type?: LinkCell;
   // read-only
   id?: number;
   created_at?: string;

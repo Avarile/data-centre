@@ -154,6 +154,20 @@ describe('getKnowledgesWithType', () => {
     const result = await getKnowledgesWithType();
     expect(result[0].type).toBeUndefined();
   });
+
+  it('resolves the type from a link cell', async () => {
+    const tRec = { id: 'tRec1', fields: { title: 'Technical' } };
+    const kRec = {
+      id: 'knRec1',
+      fields: { title: 'Deploy', knowledge_type: { id: 'tRec1', title: 'Technical' } },
+    };
+    mockListKnowledges.mockResolvedValue({ records: [kRec] });
+    mockListTypes.mockResolvedValue({ records: [tRec] });
+
+    const [result] = await getKnowledgesWithType();
+
+    expect(result.type?.fields.title).toBe('Technical');
+  });
 });
 
 describe('getKnowledgesByType', () => {

@@ -11,6 +11,7 @@ import {
   type KnowledgeRecord,
   type KnowledgeFields,
 } from './knowledge.js';
+import { linkTitle } from './link-cell.js';
 
 export interface KnowledgeWithType {
   knowledge: KnowledgeRecord;
@@ -56,12 +57,10 @@ export async function getKnowledgesWithType(): Promise<KnowledgeWithType[]> {
 
   const typeByTitle = new Map(typesResult.records.map((t) => [t.fields.title, t]));
 
-  return knowledgesResult.records.map((knowledge) => ({
-    knowledge,
-    type: knowledge.fields.knowledge_type
-      ? typeByTitle.get(knowledge.fields.knowledge_type)
-      : undefined,
-  }));
+  return knowledgesResult.records.map((knowledge) => {
+    const title = linkTitle(knowledge.fields.knowledge_type);
+    return { knowledge, type: title ? typeByTitle.get(title) : undefined };
+  });
 }
 
 /**

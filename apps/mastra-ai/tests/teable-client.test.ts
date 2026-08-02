@@ -122,6 +122,7 @@ describe('teableCreate', () => {
     expect(opts.method).toBe('POST');
     const body = JSON.parse(opts.body as string);
     expect(body.fieldKeyType).toBe('name');
+    expect(body.typecast).toBe(true);
     expect(body.records[0].fields).toEqual({ title: 'New' });
   });
 
@@ -160,6 +161,7 @@ describe('teableUpdate', () => {
     expect(opts.method).toBe('PATCH');
     const body = JSON.parse(opts.body as string);
     expect(body.fieldKeyType).toBe('name');
+    expect(body.typecast).toBe(true);
     expect(body.record.fields).toEqual({ title: 'Updated' });
   });
 
