@@ -4,7 +4,7 @@ import { z } from '../zod';
  * Payload shape version. Bump when the node/link schema changes in a
  * non-additive way so clients can detect an incompatible server.
  */
-export const KNOWLEDGE_GRAPH_VERSION = 1;
+export const KNOWLEDGE_GRAPH_VERSION = 2;
 
 export const KNOWLEDGE_CORE_NODE_ID = 'core';
 export const TYPE_NODE_PREFIX = 'type:';
@@ -21,8 +21,13 @@ export const KnowledgeNodeTierValues = ['core', 'type', 'knowledge'] as const;
 export type KnowledgeNodeTier = (typeof KnowledgeNodeTierValues)[number];
 export const knowledgeNodeTierSchema = z.enum(KnowledgeNodeTierValues);
 
-// Which pair of tiers an edge spans.
-export const KnowledgeLinkTierValues = ['core-type', 'type-knowledge'] as const;
+// core -> type (roots only) -> nested types -> knowledge, plus peer relations.
+export const KnowledgeLinkTierValues = [
+  'core-type',
+  'type-parent',
+  'type-knowledge',
+  'knowledge-knowledge',
+] as const;
 export type KnowledgeLinkTier = (typeof KnowledgeLinkTierValues)[number];
 export const knowledgeLinkTierSchema = z.enum(KnowledgeLinkTierValues);
 
@@ -34,9 +39,21 @@ export const knowledgeDetailTierSchema = z.enum(KnowledgeDetailTierValues);
 export const knowledgeGraphNodeSchema = z.object({
   id: z.string().meta({ description: 'Unique node id: core, type:<recordId> or kn:<recordId>.' }),
   recordId: z.string().nullable().meta({ description: 'Record id; null for synthetic nodes.' }),
-  tier: knowledgeNodeTierSchema.meta({ description: 'Depth in the 3-tier star.' }),
+  tier: knowledgeNodeTierSchema.meta({ description: 'Which tier this node belongs to.' }),
   label: z.string().meta({ description: 'Display title.' }),
-  typeId: z.string().nullable().meta({ description: 'Parent type node id; null above tier 2.' }),
+  /** @deprecated superseded by parentId; removed in Task 10. */
+  typeId: z.string().nullable(),
+  parentId: z.string().nullable().meta({
+    description:
+      'Structural parent: a type points at its parent type (or core at a root), a knowledge at its type.',
+  }),
+  rootTypeId: z.string().nullable().meta({
+    description: 'Top ancestor type. The colour key — a whole subtree shares a hue family.',
+  }),
+  depth: z.number().int().meta({
+    description:
+      'Nesting depth. 0 at a root type; a knowledge is its type + 1. Not meaningful for core, which reports 0.',
+  }),
   degree: z.number().int().meta({ description: 'Adjacent node count, precomputed for sizing.' }),
 });
 export type IKnowledgeGraphNode = z.infer<typeof knowledgeGraphNodeSchema>;

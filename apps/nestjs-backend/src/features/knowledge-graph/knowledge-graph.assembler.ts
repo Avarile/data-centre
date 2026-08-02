@@ -91,6 +91,11 @@ export const assembleKnowledgeGraph = (
       tier: 'core',
       label: coreLabel,
       typeId: null,
+      parentId: null,
+      rootTypeId: null,
+      // Depth is undefined for a node outside the taxonomy; 0 is the neutral
+      // report, and `tier` is what distinguishes core from a root type.
+      depth: 0,
       degree: typeNodeIds.length,
     },
   ];
@@ -103,6 +108,9 @@ export const assembleKnowledgeGraph = (
       tier: 'type',
       label: type.title,
       typeId: null,
+      parentId: KNOWLEDGE_CORE_NODE_ID,
+      rootTypeId: id,
+      depth: 0,
       degree: childCount.get(id) ?? 0,
     });
   }
@@ -114,17 +122,24 @@ export const assembleKnowledgeGraph = (
       tier: 'type',
       label: unclassifiedLabel,
       typeId: null,
+      parentId: KNOWLEDGE_CORE_NODE_ID,
+      rootTypeId: UNCLASSIFIED_TYPE_NODE_ID,
+      depth: 0,
       degree: orphanCount,
     });
   }
 
   for (const row of emitted) {
+    const bucket = bucketOf(row);
     nodes.push({
       id: `${KNOWLEDGE_NODE_PREFIX}${row.recordId}`,
       recordId: row.recordId,
       tier: 'knowledge',
       label: row.title,
-      typeId: bucketOf(row),
+      typeId: bucket,
+      parentId: bucket,
+      rootTypeId: bucket,
+      depth: 1,
       degree: 1,
     });
   }

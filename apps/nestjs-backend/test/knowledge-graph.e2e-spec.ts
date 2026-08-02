@@ -111,8 +111,8 @@ describe('KnowledgeGraph (e2e)', () => {
 
     expect(data.nodes[0].id).toBe('core');
     expect(data.nodes[0].tier).toBe('core');
-    expect(data.version).toBe(1);
-    expect(data.etag).toMatch(/^"kg1-[0-9a-f]{16}"$/);
+    expect(data.version).toBe(2);
+    expect(data.etag).toMatch(/^"kg2-[0-9a-f]{16}"$/);
 
     expect(data.stats).toEqual({
       typeCount: 3, // Alpha + Beta + unclassified

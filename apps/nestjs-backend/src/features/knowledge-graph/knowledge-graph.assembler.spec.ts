@@ -37,6 +37,9 @@ describe('assembleKnowledgeGraph', () => {
       tier: 'core',
       label: OPTS.coreLabel,
       typeId: null,
+      parentId: null,
+      rootTypeId: null,
+      depth: 0,
       degree: 0,
     });
     expect(graph.links).toHaveLength(0);
@@ -204,6 +207,45 @@ describe('assembleKnowledgeGraph', () => {
       expect(node.typeId).not.toBeNull();
       expect(typeIds.has(node.typeId as string)).toBe(true);
     }
+  });
+
+  describe('v2 node fields', () => {
+    it('gives every type a core parent, itself as root, and depth 0', () => {
+      const graph = assembleKnowledgeGraph([type('recT1', 'Alpha')], [], OPTS);
+      const alpha = graph.nodes.find((n) => n.id === 'type:recT1');
+
+      expect(alpha).toMatchObject({
+        parentId: KNOWLEDGE_CORE_NODE_ID,
+        rootTypeId: 'type:recT1',
+        depth: 0,
+      });
+    });
+
+    it('parents a knowledge onto its type and puts it one level deeper', () => {
+      const graph = assembleKnowledgeGraph(
+        [type('recT1', 'Alpha')],
+        [knowledge('recK1', 'one', 'recT1')],
+        OPTS
+      );
+      const kn = graph.nodes.find((n) => n.id === 'kn:recK1');
+
+      expect(kn).toMatchObject({
+        parentId: 'type:recT1',
+        rootTypeId: 'type:recT1',
+        depth: 1,
+      });
+    });
+
+    it('roots an unclassified knowledge on the synthetic bucket', () => {
+      const graph = assembleKnowledgeGraph([], [knowledge('recK1', 'one')], OPTS);
+      const kn = graph.nodes.find((n) => n.id === 'kn:recK1');
+
+      expect(kn).toMatchObject({
+        parentId: UNCLASSIFIED_TYPE_NODE_ID,
+        rootTypeId: UNCLASSIFIED_TYPE_NODE_ID,
+        depth: 1,
+      });
+    });
   });
 
   it('emits a payload that satisfies the published contract', () => {
