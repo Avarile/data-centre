@@ -40,9 +40,9 @@ export const KnowledgeNodeDetailPanel = (props: IKnowledgeNodeDetailPanelProps) 
           ) : (
             <h2 className="truncate text-sm font-semibold">{data?.label ?? nodeId}</h2>
           )}
-          {data?.typeLabel && (
+          {data?.parentLabel && (
             <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-              {t('knowledgeGraph:detail.type')}: {data.typeLabel}
+              {t('knowledgeGraph:detail.type')}: {data.parentLabel}
             </p>
           )}
         </div>

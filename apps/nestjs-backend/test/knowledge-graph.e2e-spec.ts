@@ -190,8 +190,27 @@ describe('KnowledgeGraph (e2e)', () => {
     expect(data.recordId).toBe(activeKnowledgeId);
     expect(data.tier).toBe('knowledge');
     expect(data.label).toBe('k-active');
-    expect(data.typeId).toBe(`type:${alphaTypeId}`);
+    expect(data.parentId).toBe(`type:${alphaTypeId}`);
+    expect(data.ancestors).toEqual([{ id: `type:${alphaTypeId}`, label: 'Alpha' }]);
     expect(data.createdTime).not.toBeNull();
+  });
+
+  it('builds a root-first ancestor chain for a nested type', async () => {
+    const { data } = await getKnowledgeGraphNode(baseId, `type:${betaTypeId}`);
+
+    expect(data.tier).toBe('type');
+    expect(data.parentId).toBe(`type:${alphaTypeId}`);
+    expect(data.parentLabel).toBe('Alpha');
+    expect(data.ancestors).toEqual([{ id: `type:${alphaTypeId}`, label: 'Alpha' }]);
+    expect(data.relatedCount).toBe(0);
+  });
+
+  it('reports an empty ancestor chain for a root type', async () => {
+    const { data } = await getKnowledgeGraphNode(baseId, `type:${alphaTypeId}`);
+
+    expect(data.parentId).toBeNull();
+    expect(data.parentLabel).toBeNull();
+    expect(data.ancestors).toEqual([]);
   });
 
   it('404s for synthetic nodes that have no backing record', async () => {

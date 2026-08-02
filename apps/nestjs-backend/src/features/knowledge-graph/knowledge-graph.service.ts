@@ -28,13 +28,23 @@ const CONTEXT_TYPES = [FieldType.LongText, FieldType.SingleLineText] as const;
 const GRAPH_TYPE_SPECS: IFieldSpec[] = [
   { name: KNOWLEDGE_FIELD.title, types: TITLE_TYPES, required: true },
   { name: KNOWLEDGE_FIELD.deletedAt, types: [FieldType.Date], required: true },
-  { name: KNOWLEDGE_FIELD.parentType, types: PARENT_TYPE_FIELD_TYPES, required: false },
+  {
+    name: KNOWLEDGE_FIELD.parentType,
+    types: PARENT_TYPE_FIELD_TYPES,
+    required: false,
+    singleValued: true,
+  },
 ];
 
 const GRAPH_KNOWLEDGE_SPECS: IFieldSpec[] = [
   { name: KNOWLEDGE_FIELD.title, types: TITLE_TYPES, required: true },
   { name: KNOWLEDGE_FIELD.deletedAt, types: [FieldType.Date], required: true },
-  { name: KNOWLEDGE_FIELD.knowledgeType, types: KNOWLEDGE_TYPE_FIELD_TYPES, required: false },
+  {
+    name: KNOWLEDGE_FIELD.knowledgeType,
+    types: KNOWLEDGE_TYPE_FIELD_TYPES,
+    required: false,
+    singleValued: true,
+  },
   { name: KNOWLEDGE_FIELD.relatedKnowledge, types: [FieldType.Link], required: false },
 ];
 
@@ -42,46 +52,24 @@ const GRAPH_KNOWLEDGE_SPECS: IFieldSpec[] = [
 const DETAIL_SPECS: IFieldSpec[] = [
   { name: KNOWLEDGE_FIELD.title, types: TITLE_TYPES, required: true },
   { name: KNOWLEDGE_FIELD.context, types: CONTEXT_TYPES, required: false },
-  { name: KNOWLEDGE_FIELD.knowledgeType, types: KNOWLEDGE_TYPE_FIELD_TYPES, required: false },
+  {
+    name: KNOWLEDGE_FIELD.knowledgeType,
+    types: KNOWLEDGE_TYPE_FIELD_TYPES,
+    required: false,
+    singleValued: true,
+  },
+  { name: KNOWLEDGE_FIELD.relatedKnowledge, types: [FieldType.Link], required: false },
 ];
 
-/**
- * Reads the linked knowledge_type record id out of a `knowledge_type` cell.
- *
- * The cell is not normalized: it is an `ILinkCellValue` when the field is
- * single-valued and an array when it is multi-valued, and the column may also
- * be a plain-text title. Multi-valued links are truncated to the first entry —
- * the 3-tier star admits exactly one parent per knowledge node.
- */
-const extractTypeRecordId = (
-  raw: unknown,
-  titleToRecordId: ReadonlyMap<string, string>
-): string | null => {
-  if (raw == null) {
-    return null;
-  }
-  const first = Array.isArray(raw) ? raw[0] : raw;
-  if (first == null) {
-    return null;
-  }
-  if (typeof first === 'object' && 'id' in (first as object)) {
-    return (first as ILinkCellValue).id;
-  }
-  // Plain-text fallback: the column stores the linked record's title.
-  if (typeof first === 'string') {
-    return titleToRecordId.get(first) ?? null;
-  }
-  return null;
-};
-
-/** Reads the linked recordId out of a single-valued link cell. */
+/** Reads the linked recordId out of a single-valued link cell. Both
+ *  knowledge_type and parent_type are asserted single-valued in resolveFields,
+ *  so there is no multi-value case to silently drop. */
 const extractLinkRecordId = (raw: unknown): string | null => {
   if (raw == null) {
     return null;
   }
-  const first = Array.isArray(raw) ? raw[0] : raw;
-  if (first && typeof first === 'object' && 'id' in (first as object)) {
-    return (first as ILinkCellValue).id;
+  if (typeof raw === 'object' && 'id' in (raw as object)) {
+    return (raw as ILinkCellValue).id;
   }
   return null;
 };
@@ -110,11 +98,8 @@ export class KnowledgeGraphService {
       this.knowledgeConfig;
     await this.assertTablesInBase(baseId, [knowledgeTableId, knowledgeTypeTableId]);
 
-    // Types first: the knowledge read needs their titles to build the
-    // text-column fallback map used by extractTypeRecordId.
     const types = await this.readTypes(knowledgeTypeTableId);
-    const titleToRecordId = new Map(types.map((t) => [t.title, t.recordId]));
-    const knowledges = await this.readKnowledges(knowledgeTableId, titleToRecordId);
+    const knowledges = await this.readKnowledges(knowledgeTableId);
 
     const graph = assembleKnowledgeGraph(types, knowledges, {
       maxKnowledgeNodes,
@@ -141,10 +126,14 @@ export class KnowledgeGraphService {
     const titleField = this.required(fields, KNOWLEDGE_FIELD.title, tableId);
     const contextField = fields.get(KNOWLEDGE_FIELD.context);
     const knowledgeTypeField = fields.get(KNOWLEDGE_FIELD.knowledgeType);
+    const relatedKnowledgeField = fields.get(KNOWLEDGE_FIELD.relatedKnowledge);
 
-    const projection = [titleField.id, contextField?.id, knowledgeTypeField?.id].filter(
-      (id): id is string => Boolean(id)
-    );
+    const projection = [
+      titleField.id,
+      contextField?.id,
+      knowledgeTypeField?.id,
+      relatedKnowledgeField?.id,
+    ].filter((id): id is string => Boolean(id));
 
     // fieldKeyType is MANDATORY here: getRecord defaults it to Name, which
     // would make every `record.fields[field.id]` lookup return undefined.
@@ -153,8 +142,40 @@ export class KnowledgeGraphService {
       projection,
     });
 
-    const rawLink = knowledgeTypeField ? record.fields[knowledgeTypeField.id] : undefined;
-    const { typeId, typeLabel } = this.describeLink(rawLink);
+    // The chain needs the whole type table, not one record: it walks parents.
+    // Acceptable on this path — it serves one record at a time and already
+    // reads `context`, the largest column in either table.
+    const types = await this.readTypes(knowledgeTypeTableId);
+    const byRecordId = new Map(types.map((t) => [t.recordId, t]));
+
+    const chainFrom = (startRecordId: string | null): { id: string; label: string }[] => {
+      const chain: { id: string; label: string }[] = [];
+      const seen = new Set<string>();
+      let current = startRecordId;
+      while (current && !seen.has(current)) {
+        seen.add(current);
+        const node = byRecordId.get(current);
+        if (!node) break;
+        chain.unshift({ id: `${TYPE_NODE_PREFIX}${node.recordId}`, label: node.title });
+        current = node.parentRecordId;
+      }
+      return chain;
+    };
+
+    const typeRecordId = knowledgeTypeField
+      ? extractLinkRecordId(record.fields[knowledgeTypeField.id])
+      : null;
+
+    const ancestors =
+      tier === 'knowledge'
+        ? chainFrom(typeRecordId)
+        : chainFrom(byRecordId.get(recordId)?.parentRecordId ?? null);
+    const parent = ancestors[ancestors.length - 1] ?? null;
+
+    const relatedCount =
+      tier === 'knowledge' && relatedKnowledgeField
+        ? extractRelatedRecordIds(record.fields[relatedKnowledgeField.id]).length
+        : 0;
 
     return {
       id: nodeId,
@@ -162,8 +183,10 @@ export class KnowledgeGraphService {
       tier,
       label: (record.fields[titleField.id] as string | undefined) ?? '',
       context: contextField ? (record.fields[contextField.id] as string | undefined) ?? null : null,
-      typeId,
-      typeLabel,
+      parentId: parent?.id ?? null,
+      parentLabel: parent?.label ?? null,
+      ancestors,
+      relatedCount,
       createdTime: record.createdTime ?? null,
       lastModifiedTime: record.lastModifiedTime ?? null,
     };
@@ -196,29 +219,6 @@ export class KnowledgeGraphService {
     throw new CustomHttpException(`Node ${nodeId} has no backing record`, HttpErrorCode.NOT_FOUND);
   }
 
-  /**
-   * Derives the parent type from a link cell alone, which is all the detail
-   * endpoint needs. A plain-text `knowledge_type` column carries a title but no
-   * id, so `typeId` is null in that case while `typeLabel` still resolves.
-   */
-  private describeLink(raw: unknown): { typeId: string | null; typeLabel: string | null } {
-    if (raw == null) {
-      return { typeId: null, typeLabel: null };
-    }
-    const first = Array.isArray(raw) ? raw[0] : raw;
-    if (first == null) {
-      return { typeId: null, typeLabel: null };
-    }
-    if (typeof first === 'object' && 'id' in (first as object)) {
-      const link = first as ILinkCellValue;
-      return { typeId: `${TYPE_NODE_PREFIX}${link.id}`, typeLabel: link.title ?? null };
-    }
-    if (typeof first === 'string') {
-      return { typeId: null, typeLabel: first };
-    }
-    return { typeId: null, typeLabel: null };
-  }
-
   private async readTypes(tableId: string): Promise<IKnowledgeTypeRow[]> {
     const fields = await this.resolveFields(tableId, GRAPH_TYPE_SPECS);
     const titleField = this.required(fields, KNOWLEDGE_FIELD.title, tableId);
@@ -237,10 +237,7 @@ export class KnowledgeGraphService {
     }));
   }
 
-  private async readKnowledges(
-    tableId: string,
-    titleToRecordId: ReadonlyMap<string, string>
-  ): Promise<IKnowledgeRow[]> {
+  private async readKnowledges(tableId: string): Promise<IKnowledgeRow[]> {
     const fields = await this.resolveFields(tableId, GRAPH_KNOWLEDGE_SPECS);
     const titleField = this.required(fields, KNOWLEDGE_FIELD.title, tableId);
     const deletedAtField = this.required(fields, KNOWLEDGE_FIELD.deletedAt, tableId);
@@ -256,7 +253,7 @@ export class KnowledgeGraphService {
       recordId: row.id,
       title: (row.fields[titleField.id] as string | undefined) ?? '',
       typeRecordId: knowledgeTypeField
-        ? extractTypeRecordId(row.fields[knowledgeTypeField.id], titleToRecordId)
+        ? extractLinkRecordId(row.fields[knowledgeTypeField.id])
         : null,
       relatedRecordIds: relatedKnowledgeField
         ? extractRelatedRecordIds(row.fields[relatedKnowledgeField.id])
@@ -318,6 +315,12 @@ export class KnowledgeGraphService {
       if (!spec.types.includes(field.type)) {
         throw new CustomHttpException(
           `Field "${spec.name}" on table ${tableId} is ${field.type}, expected one of ${spec.types.join(', ')}`,
+          HttpErrorCode.VALIDATION_ERROR
+        );
+      }
+      if (spec.singleValued && field.isMultipleCellValue) {
+        throw new CustomHttpException(
+          `Field "${spec.name}" on table ${tableId} is multi-valued; a knowledge belongs to exactly one type`,
           HttpErrorCode.VALIDATION_ERROR
         );
       }
