@@ -1730,9 +1730,21 @@ In `graphTheme.ts`:
 ```ts
 /**
  * Hue comes from the ROOT ancestor, so a whole subtree reads as one family;
- * lightness comes from depth, so nesting is legible within that family. The
- * floors keep a deep type from going darker than its own children, which would
- * read as an inverted hierarchy.
+ * lightness comes from depth, so nesting is legible within that family.
+ *
+ * The decay is asymptotic rather than clamped. A clamped form
+ * (`Math.max(40, 62 - depth * 8)`) hits its floor at depth 3 and then returns
+ * the SAME colour for every deeper level, so any taxonomy three or more levels
+ * deep flattens into one shade — the exact opposite of what varying lightness
+ * by depth is for. Converging toward a floor instead of landing on it keeps
+ * every level distinct.
+ *
+ * It also makes the hierarchy invariant provable rather than eyeballed. For a
+ * type at depth d and its child knowledge at depth d+1:
+ *     type(d)        = 40 + 22 * 0.75^d
+ *     knowledge(d+1) = 28 + 18 * 0.75^d
+ *     difference     = 12 + 4 * 0.75^d  >  0   for every d
+ * so a type is always lighter than its own knowledges, with no clamp needed.
  */
 export const colorForNode = (
   node: Pick<IKnowledgeGraphNode, 'tier' | 'id' | 'rootTypeId' | 'depth'>
@@ -1746,9 +1758,9 @@ export const colorForNode = (
   }
   const hue = hashHue(key);
   if (node.tier === 'type') {
-    return `hsl(${hue} 72% ${Math.max(40, 62 - node.depth * 8)}%)`;
+    return `hsl(${hue} 72% ${(40 + 22 * Math.pow(0.75, node.depth)).toFixed(1)}%)`;
   }
-  return `hsl(${hue} 52% ${Math.max(30, 46 - Math.max(0, node.depth - 1) * 5)}%)`;
+  return `hsl(${hue} 52% ${(28 + 18 * Math.pow(0.75, Math.max(0, node.depth - 1))).toFixed(1)}%)`;
 };
 ```
 
