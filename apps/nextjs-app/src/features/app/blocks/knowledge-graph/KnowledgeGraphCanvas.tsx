@@ -1,4 +1,5 @@
 import type { IKnowledgeGraphLink } from '@teable/openapi';
+import { forceRadial } from 'd3-force-3d';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import type { ForceGraphMethods } from 'react-force-graph-3d';
 import ForceGraph3D from 'react-force-graph-3d';
@@ -14,6 +15,8 @@ import {
   linkDistanceFor,
   linkStrengthFor,
   nodeValFor,
+  radialStrengthFor,
+  SPHERE_RADIUS,
   standoffPosition,
 } from './utils/graphTheme';
 
@@ -174,6 +177,14 @@ export const KnowledgeGraphCanvas = forwardRef<
     const charge = fg.d3Force('charge');
     charge?.strength?.((node: ISimulationNode) => chargeFor(node.tier));
     charge?.distanceMax?.(CHARGE_DISTANCE_MAX);
+    // Pins type and knowledge nodes onto one sphere shell — see SPHERE_RADIUS
+    // for why the core is excluded and both other tiers share a radius.
+    fg.d3Force(
+      'radial',
+      forceRadial<ISimulationNode>(SPHERE_RADIUS, 0, 0, 0).strength((node) =>
+        radialStrengthFor(node.tier)
+      )
+    );
   }, [graph]);
 
   // Sprites are cached by node id and reused across filter changes, so a legend

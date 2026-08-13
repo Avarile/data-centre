@@ -51,38 +51,54 @@ export const colorForNode = (
 /**
  * Leaf size, and the knob most likely to be retuned by eye. It is a volume, not
  * a radius: at the default `nodeRelSize` of 4 (never overridden here) a leaf
- * renders at `cbrt(0.3) * 4` ≈ 2.7 world units, against a `type-knowledge` link
- * length of 32. Halving the on-screen radius means dividing this by 8.
+ * renders at `cbrt(0.0375) * 4` ≈ 1.34 world units, against a `type-knowledge`
+ * link length of 32. Halving the on-screen radius means dividing this by 8,
+ * since `cbrt(1/8) = 1/2` — which is exactly how it reached 0.0375 from the 0.3
+ * the layout was first tuned at.
  */
-export const KNOWLEDGE_NODE_VAL = 0.3;
+export const KNOWLEDGE_NODE_VAL = 0.0375;
 
 /**
  * `nodeVal` is volumetric: three-forcegraph renders a sphere of
  * `cbrt(nodeVal) * nodeRelSize`. Scaling the value by 0.2 therefore shrinks the
  * visible radius by `cbrt(0.2)` ≈ 0.585, i.e. about 41% smaller on screen.
+ *
+ * Core and type no longer share one scale. Types were halved on screen next to
+ * the leaves — 0.2 → 0.025, one eighth, per the cube root above — while the
+ * core kept the original value because it is never drawn at all: `isNodeVisible`
+ * filters it out of the render digest, so its size is a design reference for the
+ * hierarchy assertion in buildSimulationGraph.spec.ts rather than pixels on
+ * screen. Shrinking it would only move that reference.
  */
-const CORE_TYPE_VAL_SCALE = 0.2;
+const CORE_VAL_SCALE = 0.2;
+const TYPE_VAL_SCALE = 0.025;
 
 /**
  * A type node must never render smaller than the knowledge nodes hanging off it
  * — that reads as an inverted hierarchy. The degree formula below carries that
  * on its own at the current leaf size: its minimum, at degree 0, is
- * `8 * 0.2 = 1.6`, over five times the leaf value and so ~75% wider on screen.
+ * `8 * 0.025 = 0.2`, over five times the leaf value and so ~75% wider on screen.
  * Real taxonomies here carry only a handful of children each, so most types sit
- * near that minimum; the cap at degree 40 keeps the largest (6.4) under the
+ * near that minimum; the cap at degree 40 keeps the largest (0.8) under the
  * core (8).
  *
+ * Those two proportions survived the halving unchanged, and not by luck: both
+ * rendered tiers were divided by the same 8, and the invariant compares a ratio,
+ * where a common factor cancels exactly. Halving only one of them is what would
+ * break it — the reason the two scales are separate constants rather than one
+ * knob to nudge.
+ *
  * A `Math.max(KNOWLEDGE_NODE_VAL * 2, …)` floor used to guard this, and it did
- * bind while the leaf value was 2 — it goes dormant below a leaf of 0.8, so at
- * 0.3 it can never fire. It is removed rather than left dormant because a clamp
- * that silently rescues an inverted hierarchy hides the retuning that caused it.
- * The invariant is asserted across every degree in buildSimulationGraph.spec.ts
- * instead: set KNOWLEDGE_NODE_VAL to 1.6 or beyond and that spec fails, which is
- * the signal you want.
+ * bind while the leaf value was 2 — it goes dormant below a leaf of 0.1, so at
+ * 0.0375 it can never fire. It is removed rather than left dormant because a
+ * clamp that silently rescues an inverted hierarchy hides the retuning that
+ * caused it. The invariant is asserted across every degree in
+ * buildSimulationGraph.spec.ts instead: set KNOWLEDGE_NODE_VAL to 0.2 or beyond
+ * and that spec fails, which is the signal you want.
  */
 export const NODE_VAL: Record<KnowledgeNodeTier, (degree: number) => number> = {
-  core: () => 40 * CORE_TYPE_VAL_SCALE,
-  type: (degree) => (8 + Math.min(degree, 40) * 0.6) * CORE_TYPE_VAL_SCALE,
+  core: () => 40 * CORE_VAL_SCALE,
+  type: (degree) => (8 + Math.min(degree, 40) * 0.6) * TYPE_VAL_SCALE,
   knowledge: () => KNOWLEDGE_NODE_VAL,
 };
 export const DEFAULT_NODE_VAL = KNOWLEDGE_NODE_VAL;
@@ -205,6 +221,41 @@ export const DEFAULT_CHARGE = -60;
  * distance grows the clusters, and this has to grow with it or they merge.
  */
 export const CHARGE_DISTANCE_MAX = 110;
+
+/**
+ * Pins every type and knowledge node onto the surface of one sphere, via a
+ * `forceRadial` registered alongside `link`/`charge` in the canvas's force
+ * effect. Requested explicitly in place of the organic-cluster layout above —
+ * see `docs/superpowers/specs/2026-08-02-knowledge-graph-organic-clusters-design.md`
+ * for why that layout exists: an earlier shell placed only TYPE nodes on it
+ * while KNOWLEDGE leaves hung further out on short links, so each cluster
+ * pointed radially outward past the shell — a dandelion.
+ *
+ * Applying the SAME radius to both tiers is what avoids that: a leaf has
+ * nowhere radial left to go relative to its type, so `type-knowledge`'s link
+ * (distance 32, strength 0.7) and `charge`'s capped repulsion resolve entirely
+ * tangentially, across the shell surface, rather than as an outward spike.
+ * Reusing `LINK_DISTANCE['core-type']` rather than introducing an unrelated
+ * number keeps the shell at the radius the layout was already framed for
+ * (`FOCUS_DISTANCE.core`).
+ */
+export const SPHERE_RADIUS = LINK_DISTANCE['core-type'];
+
+/**
+ * Strength of the radial pin, not the shell's radius. High enough that nodes
+ * visibly sit on the sphere rather than drift through the volume the charge
+ * force would otherwise fill, but short of 1 so it settles smoothly alongside
+ * the stiff `type-knowledge` link instead of fighting it rigidly every tick.
+ */
+export const SPHERE_RADIAL_STRENGTH = 0.7;
+
+/**
+ * The core sits at the origin and is excluded — pulling the hub onto the same
+ * shell as everything hanging off it would collapse the sphere's one
+ * meaningful landmark into just another point on its surface.
+ */
+export const radialStrengthFor = (tier: string): number =>
+  tier === 'core' ? 0 : SPHERE_RADIAL_STRENGTH;
 
 export const FOCUS_DISTANCE: Record<KnowledgeNodeTier, number> = {
   // Unchanged: the cluster layout's extent runs ~352 at a dozen types to ~515
