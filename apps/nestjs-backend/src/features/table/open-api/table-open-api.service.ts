@@ -431,8 +431,11 @@ export class TableOpenApiService {
   }
 
   async cleanReferenceFieldIds(tableIds: string[]) {
+    // Every computed field type participates in the reference graph - rollup, lookup,
+    // conditional rollup and lastModifiedTime all create edges, not just link/formula -
+    // so scoping this by type left dependency edges behind for the rest.
     const fields = await this.prismaService.txClient().field.findMany({
-      where: { tableId: { in: tableIds }, type: { in: [FieldType.Link, FieldType.Formula] } },
+      where: { tableId: { in: tableIds } },
       select: { id: true },
     });
     const fieldIds = fields.map((field) => field.id);
@@ -443,6 +446,11 @@ export class TableOpenApiService {
 
   async cleanTablesRelatedData(baseId: string, tableIds: string[]) {
     const metaPrisma = this.prismaService.txClient();
+
+    // Drop dependency edges before the fields they point at are hard-deleted below.
+    // Callers that skip this leave rows in `reference` whose field ids resolve to
+    // nothing, which breaks every reference-graph walk that reaches them.
+    await this.cleanReferenceFieldIds(tableIds);
 
     // delete field for table
     await metaPrisma.field.deleteMany({

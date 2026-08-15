@@ -398,6 +398,51 @@ describe('OpenAPI Graph (e2e)', () => {
     }
   });
 
+  it('should plan a self link whose primary field carries a reference to a hard-deleted field', async () => {
+    // Reproduces the orphaned-reference crash: permanent deletion used to drop `field`
+    // rows while leaving `reference` rows behind, so the id resolves to nothing. A self
+    // link seeds the dependency walk with its own table's primary field, which is where
+    // such an edge hangs, and planFieldCreate builds its own field map without the
+    // filtering that getTopoOrdersContext applies for the other plan endpoints.
+    const primaryField = table1.fields[0];
+    const missingFieldId = 'fldHardDeletedOrphan';
+    const staleReferenceId = `ref-orphan-${Date.now()}`;
+
+    try {
+      await prisma.txClient().reference.create({
+        data: {
+          id: staleReferenceId,
+          fromFieldId: primaryField.id,
+          toFieldId: missingFieldId,
+        },
+      });
+
+      const selfLinkRo: IFieldRo = {
+        name: 'self link',
+        type: FieldType.Link,
+        options: {
+          relationship: Relationship.ManyOne,
+          foreignTableId: table1.id,
+          lookupFieldId: primaryField.id,
+        },
+      };
+
+      const { data: plan } = await planFieldCreate(table1.id, selfLinkRo);
+
+      const nodeIds = plan.graph?.nodes?.map((node) => node.id) ?? [];
+      expect(nodeIds).not.toContain(missingFieldId);
+      expect(
+        plan.graph?.edges?.some(
+          (edge) => edge.source === missingFieldId || edge.target === missingFieldId
+        )
+      ).toBe(false);
+    } finally {
+      await prisma.txClient().reference.deleteMany({
+        where: { id: staleReferenceId },
+      });
+    }
+  });
+
   it('should ignore broken link key metadata when planning single select conversion', async () => {
     const hostField = table1.fields[0];
     const linkField = await createField(table2.id, {

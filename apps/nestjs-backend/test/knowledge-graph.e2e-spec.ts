@@ -32,6 +32,11 @@ const TAXONOMY_FIELDS = [
   { name: 'deleted_at', type: FieldType.Date },
 ];
 
+/** Fixture record titles, which double as the labels assertions match on. */
+const K_ACTIVE = 'k-active';
+const K_INACTIVE = 'k-inactive';
+const K_UNSET = 'k-unset';
+
 describe('KnowledgeGraph (e2e)', () => {
   let app: INestApplication;
   let cfg: IKnowledgeConfig;
@@ -42,6 +47,7 @@ describe('KnowledgeGraph (e2e)', () => {
   let betaTypeId = '';
   let activeKnowledgeId = '';
   let inactiveKnowledgeId = '';
+  let unsetKnowledgeId = '';
 
   const baseId = globalThis.testConfig.baseId;
 
@@ -50,8 +56,20 @@ describe('KnowledgeGraph (e2e)', () => {
     // Test.createTestingModule().overrideProvider(...) is unreachable from here.
     app = (await initApp()).app;
 
-    typeTable = await createTable(baseId, { name: 'knowledge_type', fields: TAXONOMY_FIELDS });
-    knowledgeTable = await createTable(baseId, { name: 'knowledges', fields: TAXONOMY_FIELDS });
+    // `records: []` is load-bearing: createTable seeds three blank rows when
+    // records is omitted, and blank rows are real records to the graph — they
+    // arrive as untitled types and untyped (so unclassified) knowledges, which
+    // shifts every count in the stats snapshot below.
+    typeTable = await createTable(baseId, {
+      name: 'knowledge_type',
+      fields: TAXONOMY_FIELDS,
+      records: [],
+    });
+    knowledgeTable = await createTable(baseId, {
+      name: 'knowledges',
+      fields: TAXONOMY_FIELDS,
+      records: [],
+    });
 
     // The link field needs both tables to exist, so it cannot be inline above.
     await createField(knowledgeTable.id, {
@@ -59,20 +77,57 @@ describe('KnowledgeGraph (e2e)', () => {
       type: FieldType.Link,
       options: { relationship: Relationship.ManyOne, foreignTableId: typeTable.id },
     });
+    // Every self-referencing link below is isOneWay: true, and that is
+    // load-bearing rather than stylistic — for two independent reasons.
+    //
+    // 1. A two-way self-link auto-creates a symmetric field named after the
+    //    SOURCE table (see generateSymmetricField), so a two-way `parent_type`
+    //    puts a multi-valued field literally called `knowledge_type` on the
+    //    type table. DETAIL_SPECS resolves `knowledge_type` by name, finds that
+    //    one, and fails the node endpoint with a 400. Reproduced against the
+    //    live base on 2026-08-14; production works around it by renaming that
+    //    symmetric field to `child_types` straight after creation.
+    //
+    // 2. Writing a cell on a two-way self-link created moments earlier in this
+    //    same setup silently no-ops: the PATCH returns 200 and bumps
+    //    lastModifiedTime, but the cell reads back empty, so the fixture seeds
+    //    nothing and every nesting assertion fails against a flat graph. Note
+    //    this is specific to a freshly created field — the same write against
+    //    the live base's long-established two-way `knowledge_parent` persists
+    //    correctly, so it looks like a race in symmetric-field setup rather
+    //    than a blanket rule. One-way sidesteps it entirely.
+    //
+    // One-way is also what the v2 design doc specified for parent_type in the
+    // first place: children are derived by inverting the parent map, so the
+    // symmetric side was never needed. The backend reads only the ManyOne side,
+    // so one-way here exercises exactly the same code path production does.
     await createField(typeTable.id, {
       name: 'parent_type',
       type: FieldType.Link,
-      options: { relationship: Relationship.ManyOne, foreignTableId: typeTable.id },
+      options: {
+        relationship: Relationship.ManyOne,
+        foreignTableId: typeTable.id,
+        isOneWay: true,
+      },
     });
-    // Self-referencing, two-way (isOneWay omitted/false creates the symmetric
-    // field), ManyMany — mirrors parent_type's self-link but multi-valued.
     await createField(knowledgeTable.id, {
       name: 'related_knowledge',
       type: FieldType.Link,
       options: {
         relationship: Relationship.ManyMany,
         foreignTableId: knowledgeTable.id,
-        isOneWay: false,
+        isOneWay: true,
+      },
+    });
+    // Nested knowledge: the same self-link shape as parent_type, on the other
+    // table. The assembler reads only this ManyOne side and derives children.
+    await createField(knowledgeTable.id, {
+      name: 'knowledge_parent',
+      type: FieldType.Link,
+      options: {
+        relationship: Relationship.ManyOne,
+        foreignTableId: knowledgeTable.id,
+        isOneWay: true,
       },
     });
 
@@ -97,9 +152,9 @@ describe('KnowledgeGraph (e2e)', () => {
       fieldKeyType: FieldKeyType.Name,
       records: [
         // is_active true / false / never set — all three must survive.
-        { fields: { title: 'k-active', knowledge_type: { id: alphaTypeId }, is_active: true } },
-        { fields: { title: 'k-inactive', knowledge_type: { id: betaTypeId }, is_active: false } },
-        { fields: { title: 'k-unset', knowledge_type: { id: alphaTypeId } } },
+        { fields: { title: K_ACTIVE, knowledge_type: { id: alphaTypeId }, is_active: true } },
+        { fields: { title: K_INACTIVE, knowledge_type: { id: betaTypeId }, is_active: false } },
+        { fields: { title: K_UNSET, knowledge_type: { id: alphaTypeId } } },
         // No link at all — must land under the synthetic unclassified bucket.
         { fields: { title: 'k-orphan', context: 'a lonely note' } },
         // Soft-deleted — must disappear entirely.
@@ -114,15 +169,30 @@ describe('KnowledgeGraph (e2e)', () => {
     });
     activeKnowledgeId = knowledges.records[0].id;
     inactiveKnowledgeId = knowledges.records[1].id;
+    unsetKnowledgeId = knowledges.records[2].id;
 
-    // related_knowledge is two-way and self-referencing, so — like
-    // parent_type — it can only be set once both ends already exist. Setting
-    // it from k-active's side populates k-inactive's symmetric field too.
+    // related_knowledge is self-referencing, so — like parent_type — it can
+    // only be set once both ends already exist. Written from k-active's side
+    // only: the assembler canonicalises each unordered pair and emits one
+    // undirected edge, so one direction on record is all the graph needs.
     await updateRecordByApi(
       knowledgeTable.id,
       activeKnowledgeId,
       'related_knowledge',
       [{ id: inactiveKnowledgeId }],
+      200,
+      FieldKeyType.Name
+    );
+
+    // k-unset nests under k-inactive, which is typed Beta — while k-unset's own
+    // knowledge_type is Alpha. Deliberately mismatched: it is what pins the
+    // anchor rule, that a nested record takes its branch from the ROOT of its
+    // knowledge chain rather than from its own type.
+    await updateRecordByApi(
+      knowledgeTable.id,
+      unsetKnowledgeId,
+      'knowledge_parent',
+      { id: inactiveKnowledgeId },
       200,
       FieldKeyType.Name
     );
@@ -153,21 +223,24 @@ describe('KnowledgeGraph (e2e)', () => {
 
     expect(data.nodes[0].id).toBe('core');
     expect(data.nodes[0].tier).toBe('core');
-    expect(data.version).toBe(2);
-    expect(data.etag).toMatch(/^"kg2-[0-9a-f]{16}"$/);
+    expect(data.version).toBe(3);
+    expect(data.etag).toMatch(/^"kg3-[0-9a-f]{16}"$/);
 
     expect(data.stats).toEqual({
       typeCount: 3, // Alpha + Beta + unclassified
       knowledgeCount: 4, // five rows, one soft-deleted
-      orphanCount: 1,
+      orphanCount: 1, // k-orphan; k-unset is nested, so it is never an orphan
       nodeCount: 8,
       // 7 structural links (core->Alpha, Alpha->Beta type-parent, core->
-      // unclassified, plus one type-knowledge link per emitted knowledge) +
+      // unclassified, one type-knowledge link per ROOT knowledge — k-active,
+      // k-inactive, k-orphan — and one knowledge-parent link for k-unset) +
       // 1 knowledge-knowledge link for the k-active<->k-inactive relation.
       linkCount: 8,
       truncated: { nodes: false, links: false },
       cyclesDropped: 0,
       maxDepth: 1, // Beta nests one level under Alpha
+      maxKnowledgeDepth: 1, // k-unset nests one level under k-inactive
+      knowledgeCyclesDropped: 0,
       relationCount: 1, // the single k-active<->k-inactive relation
       danglingRelations: 0,
     });
@@ -197,9 +270,9 @@ describe('KnowledgeGraph (e2e)', () => {
 
     // Pins the decision that the graph never reads is_active. If someone later
     // reintroduces an is_active predicate, this is the assertion that fails.
-    expect(labels).toContain('k-active');
-    expect(labels).toContain('k-inactive');
-    expect(labels).toContain('k-unset');
+    expect(labels).toContain(K_ACTIVE);
+    expect(labels).toContain(K_INACTIVE);
+    expect(labels).toContain(K_UNSET);
   });
 
   it('buckets an unlinked knowledge under the unclassified node', async () => {
@@ -218,7 +291,7 @@ describe('KnowledgeGraph (e2e)', () => {
 
     expect(data.recordId).toBe(activeKnowledgeId);
     expect(data.tier).toBe('knowledge');
-    expect(data.label).toBe('k-active');
+    expect(data.label).toBe(K_ACTIVE);
     expect(data.parentId).toBe(`type:${alphaTypeId}`);
     expect(data.ancestors).toEqual([{ id: `type:${alphaTypeId}`, label: 'Alpha' }]);
     expect(data.createdTime).not.toBeNull();
@@ -241,6 +314,51 @@ describe('KnowledgeGraph (e2e)', () => {
 
     expect(data.stats.relationCount).toBe(1);
     expect(data.stats.danglingRelations).toBe(0);
+  });
+
+  it('nests a knowledge under another knowledge and anchors it on the root branch', async () => {
+    const { data } = await getKnowledgeGraph(baseId);
+    const nested = data.nodes.find((n) => n.label === K_UNSET);
+
+    expect(nested).toMatchObject({
+      parentId: `${KNOWLEDGE_NODE_PREFIX}${inactiveKnowledgeId}`,
+      // Beta sits at depth 1, its knowledges at 2, and k-unset one deeper.
+      depth: 3,
+      // Filed under Alpha, but nested under a Beta-typed parent whose root is
+      // Alpha — so the branch resolves to Alpha either way. What this pins is
+      // that rootTypeId stays a TYPE id and never becomes the parent's kn: id.
+      rootTypeId: `type:${alphaTypeId}`,
+    });
+
+    const parentLinks = data.links.filter((l) => l.tier === 'knowledge-parent');
+    expect(parentLinks).toEqual([
+      {
+        source: `${KNOWLEDGE_NODE_PREFIX}${inactiveKnowledgeId}`,
+        target: `${KNOWLEDGE_NODE_PREFIX}${unsetKnowledgeId}`,
+        tier: 'knowledge-parent',
+        value: 1,
+        distance: expect.any(Number),
+      },
+    ]);
+    // And it draws no type edge of its own — exactly one structural edge each.
+    expect(
+      data.links.filter((l) => l.tier === 'type-knowledge' && l.target.endsWith(unsetKnowledgeId))
+    ).toHaveLength(0);
+  });
+
+  it('spans both hierarchies in a nested knowledge breadcrumb', async () => {
+    const { data } = await getKnowledgeGraphNode(baseId, `kn:${unsetKnowledgeId}`);
+
+    expect(data.parentId).toBe(`${KNOWLEDGE_NODE_PREFIX}${inactiveKnowledgeId}`);
+    expect(data.parentLabel).toBe(K_INACTIVE);
+    // Type chain of the ROOT knowledge first, then the knowledge chain: the
+    // same anchor the graph endpoint uses for rootTypeId, so the breadcrumb and
+    // the node colour cannot disagree about which branch this belongs to.
+    expect(data.ancestors).toEqual([
+      { id: `type:${alphaTypeId}`, label: 'Alpha' },
+      { id: `type:${betaTypeId}`, label: 'Beta' },
+      { id: `${KNOWLEDGE_NODE_PREFIX}${inactiveKnowledgeId}`, label: K_INACTIVE },
+    ]);
   });
 
   it('builds a root-first ancestor chain for a nested type', async () => {

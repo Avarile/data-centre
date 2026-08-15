@@ -14,6 +14,7 @@ export const KNOWLEDGE_FIELD = {
   deletedAt: 'deleted_at',
   knowledgeType: 'knowledge_type',
   parentType: 'parent_type',
+  knowledgeParent: 'knowledge_parent',
   relatedKnowledge: 'related_knowledge',
 } as const;
 
@@ -23,6 +24,10 @@ export const KNOWLEDGE_TYPE_FIELD_TYPES = [FieldType.Link] as const;
 
 /** Self-link on knowledge_type. Link only — a text parent could not survive a rename. */
 export const PARENT_TYPE_FIELD_TYPES = [FieldType.Link] as const;
+
+/** Self-link on knowledges. Same reasoning as PARENT_TYPE_FIELD_TYPES: a
+ *  text parent breaks the moment the parent record is retitled. */
+export const KNOWLEDGE_PARENT_FIELD_TYPES = [FieldType.Link] as const;
 
 export interface IResolvedField {
   id: string;

@@ -108,6 +108,21 @@ export class GraphService {
     return Math.floor(cellCount / this.thresholdConfig.estimateCalcCelPerMs);
   }
 
+  /**
+   * `reference` rows can outlive the fields they point at, because the permanent
+   * table/trash deletion paths used to drop `field` rows without cleaning `reference`.
+   * A dependency walk therefore surfaces field ids that resolve to nothing.
+   *
+   * The plan graph is an advisory preview, so a stale edge must degrade the picture
+   * rather than fail the request that renders it.
+   */
+  private warnDanglingEdges(context: string, danglingEdges: string[]) {
+    if (!danglingEdges.length) return;
+    this.logger.warn(
+      `${context}: skipped ${danglingEdges.length} dangling reference edge(s) pointing at fields that no longer exist: ${danglingEdges.join(', ')}`
+    );
+  }
+
   async planFieldCreate(tableId: string, fieldRo: IFieldRo): Promise<IPlanFieldVo> {
     const fieldVo = await this.fieldSupplementService.prepareCreateField(tableId, fieldRo);
     const field = createFieldInstanceByVo(fieldVo);
@@ -153,9 +168,16 @@ export class GraphService {
 
     const fieldRawsMap = groupBy(fieldRaws, 'tableId');
 
-    // Normalize edges for display: dedupe and hide link -> lookup edge
+    // Normalize edges for display: drop dangling edges, dedupe and hide link -> lookup edge.
+    // Filtering here rather than at the `edges`/`nodeIds` sites below keeps both derived
+    // from the same set, so a dropped edge can never leave an unresolvable node behind.
     const seen = new Set<string>();
+    const danglingEdges: string[] = [];
     const filteredGraph = directedGraph.filter(({ fromFieldId, toFieldId }) => {
+      if (!fieldMap[fromFieldId] || !fieldMap[toFieldId]) {
+        danglingEdges.push(`${fromFieldId}->${toFieldId}`);
+        return false;
+      }
       // Hide the link -> lookup edge for readability in graph
       const lookupOptions = field.lookupOptions;
       if (
@@ -171,6 +193,7 @@ export class GraphService {
       seen.add(key);
       return true;
     });
+    this.warnDanglingEdges(`planFieldCreate(${tableId})`, danglingEdges);
 
     const edges = filteredGraph.map<IGraphEdge>((node) => {
       const f = fieldMap[node.toFieldId];
@@ -321,9 +344,17 @@ export class GraphService {
     const { fieldId, directedGraph, allFieldIds, fieldMap, tableId2DbTableName, fieldId2TableId } =
       params;
 
-    // 1) Dedupe edges and hide link -> lookup edge for display
+    // 1) Drop dangling edges, dedupe and hide link -> lookup edge for display.
+    // `getTopoOrdersContext` already drops edges it cannot resolve, but `directedGraph`
+    // arrives here as a parameter, so this helper validates its own input rather than
+    // trusting every present and future caller to have filtered first.
     const edgeSeen = new Set<string>();
+    const danglingEdges: string[] = [];
     const filtered = directedGraph.filter(({ fromFieldId, toFieldId }) => {
+      if (!fieldMap[fromFieldId] || !fieldMap[toFieldId]) {
+        danglingEdges.push(`${fromFieldId}->${toFieldId}`);
+        return false;
+      }
       const to = fieldMap[toFieldId];
       const lookupOptions = to?.lookupOptions;
       if (
@@ -339,6 +370,7 @@ export class GraphService {
       edgeSeen.add(key);
       return true;
     });
+    this.warnDanglingEdges(`generateGraph(${fieldId})`, danglingEdges);
 
     const edges = filtered.map<IGraphEdge>((node) => {
       const field = fieldMap[node.toFieldId];
@@ -366,17 +398,22 @@ export class GraphService {
       nodeIdSet.add(e.fromFieldId);
       nodeIdSet.add(e.toFieldId);
     }
-    const nodes = Array.from(nodeIdSet).map<IGraphNode>((id) => {
+    // `nodeIdSet` is seeded with the host field independently of the edges, so it can
+    // still hold an id the field map cannot resolve. Skip those rather than throw.
+    const nodes = Array.from(nodeIdSet).flatMap<IGraphNode>((id) => {
       const tableId = fieldId2TableId[id];
       const field = fieldMap[id];
-      return {
-        id: field.id,
-        label: field.name,
-        comboId: tableId,
-        fieldType: field.type,
-        isLookup: field.isLookup,
-        isSelected: field.id === fieldId,
-      };
+      if (!field) return [];
+      return [
+        {
+          id: field.id,
+          label: field.name,
+          comboId: tableId,
+          fieldType: field.type,
+          isLookup: field.isLookup,
+          isSelected: field.id === fieldId,
+        },
+      ];
     });
 
     return {

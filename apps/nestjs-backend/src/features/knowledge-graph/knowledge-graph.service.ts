@@ -19,7 +19,12 @@ import type { IKnowledgeRow, IKnowledgeTypeRow } from './knowledge-graph.assembl
 import { assembleKnowledgeGraph, byTitleThenId } from './knowledge-graph.assembler';
 import { breakCycles } from './knowledge-type-tree';
 import type { IFieldSpec, IResolvedField } from './types';
-import { KNOWLEDGE_FIELD, KNOWLEDGE_TYPE_FIELD_TYPES, PARENT_TYPE_FIELD_TYPES } from './types';
+import {
+  KNOWLEDGE_FIELD,
+  KNOWLEDGE_PARENT_FIELD_TYPES,
+  KNOWLEDGE_TYPE_FIELD_TYPES,
+  PARENT_TYPE_FIELD_TYPES,
+} from './types';
 
 const TITLE_TYPES = [FieldType.SingleLineText, FieldType.LongText] as const;
 const CONTEXT_TYPES = [FieldType.LongText, FieldType.SingleLineText] as const;
@@ -43,6 +48,16 @@ const GRAPH_KNOWLEDGE_SPECS: IFieldSpec[] = [
   {
     name: KNOWLEDGE_FIELD.knowledgeType,
     types: KNOWLEDGE_TYPE_FIELD_TYPES,
+    required: false,
+    singleValued: true,
+  },
+  // `required: false` so a base that has not added the field yet keeps working
+  // — every knowledge simply reads as top-level. `singleValued` because a
+  // knowledge nests under exactly one parent: a multi-valued cell here would
+  // otherwise have its extra entries silently dropped by extractLinkRecordId.
+  {
+    name: KNOWLEDGE_FIELD.knowledgeParent,
+    types: KNOWLEDGE_PARENT_FIELD_TYPES,
     required: false,
     singleValued: true,
   },
@@ -84,6 +99,42 @@ const extractRelatedRecordIds = (raw: unknown): string[] => {
   return values
     .filter((v): v is ILinkCellValue => typeof v === 'object' && v !== null && 'id' in v)
     .map((v) => v.id);
+};
+
+interface IAncestor {
+  id: string;
+  label: string;
+  recordId: string;
+}
+
+/**
+ * Root-first ancestor chain, INCLUSIVE of `startRecordId`, walked up an already
+ * cycle-broken parent map. Shared by both hierarchies: pass the type map with
+ * `TYPE_NODE_PREFIX`, or the knowledge map with `KNOWLEDGE_NODE_PREFIX`.
+ *
+ * The `seen` guard is not redundant with breakCycles. The map handed in is
+ * acyclic, but this walk is the one place a regression there would hang a
+ * request rather than fail it.
+ */
+const ancestorChain = <T extends { recordId: string; title: string }>(
+  startRecordId: string | null,
+  byRecordId: ReadonlyMap<string, T>,
+  parentOf: ReadonlyMap<string, string | null>,
+  prefix: string
+): IAncestor[] => {
+  const chain: IAncestor[] = [];
+  const seen = new Set<string>();
+  let current = startRecordId;
+  while (current && !seen.has(current)) {
+    seen.add(current);
+    const row = byRecordId.get(current);
+    if (!row) {
+      break;
+    }
+    chain.unshift({ id: `${prefix}${row.recordId}`, label: row.title, recordId: row.recordId });
+    current = parentOf.get(current) ?? null;
+  }
+  return chain;
 };
 
 @Injectable()
@@ -147,7 +198,7 @@ export class KnowledgeGraphService {
     // Acceptable on this path — it serves one record at a time and already
     // reads `context`, the largest column in either table.
     const types = await this.readTypes(knowledgeTypeTableId);
-    const byRecordId = new Map(types.map((t) => [t.recordId, t]));
+    const typeById = new Map(types.map((t) => [t.recordId, t]));
 
     // Same sort + breakCycles as assembleKnowledgeGraph, so a cycle in
     // parent_type resolves to the identical parent here as it does in the
@@ -155,22 +206,7 @@ export class KnowledgeGraphService {
     // used to let this endpoint cut a different edge (or none at all) and
     // report a breadcrumb the graph disagreed with, even one containing the
     // node itself.
-    const sortedTypes = [...types].sort(byTitleThenId);
-    const { parentOf } = breakCycles(sortedTypes);
-
-    const chainFrom = (startRecordId: string | null): { id: string; label: string }[] => {
-      const chain: { id: string; label: string }[] = [];
-      const seen = new Set<string>();
-      let current = startRecordId;
-      while (current && !seen.has(current)) {
-        seen.add(current);
-        const node = byRecordId.get(current);
-        if (!node) break;
-        chain.unshift({ id: `${TYPE_NODE_PREFIX}${node.recordId}`, label: node.title });
-        current = parentOf.get(current) ?? null;
-      }
-      return chain;
-    };
+    const { parentOf: typeParentOf } = breakCycles([...types].sort(byTitleThenId));
 
     const typeRecordId = knowledgeTypeField
       ? extractLinkRecordId(record.fields[knowledgeTypeField.id])
@@ -181,8 +217,20 @@ export class KnowledgeGraphService {
     // one whose own edge breakCycles cuts, the raw field still points at its
     // old parent and the chain would wrongly include it (or, for a two-cycle,
     // report the node as its own grandparent).
-    const ancestors =
-      tier === 'knowledge' ? chainFrom(typeRecordId) : chainFrom(parentOf.get(recordId) ?? null);
+    const ancestorParts =
+      tier === 'knowledge'
+        ? await this.knowledgeAncestors(knowledgeTableId, recordId, typeRecordId, {
+            typeById,
+            typeParentOf,
+          })
+        : ancestorChain(
+            typeParentOf.get(recordId) ?? null,
+            typeById,
+            typeParentOf,
+            TYPE_NODE_PREFIX
+          );
+
+    const ancestors = ancestorParts.map(({ id, label }) => ({ id, label }));
     const parent = ancestors[ancestors.length - 1] ?? null;
 
     const relatedCount =
@@ -203,6 +251,58 @@ export class KnowledgeGraphService {
       createdTime: record.createdTime ?? null,
       lastModifiedTime: record.lastModifiedTime ?? null,
     };
+  }
+
+  /**
+   * Root-first breadcrumb for a knowledge, across both hierarchies: the type
+   * chain of the ROOT of its knowledge chain, then the knowledge chain down to
+   * its immediate parent. For an unnested record the knowledge half is empty
+   * and this is byte-identical to the pre-v3 output.
+   *
+   * The knowledge table is read in full and cycle-broken here, exactly as
+   * `getGraph` does it, rather than walking `knowledge_parent` with one
+   * `getRecord` per level. That is the F3 invariant applied to a second
+   * hierarchy: a cheaper per-level walk could cut a different cycle edge than
+   * the assembler and report a breadcrumb the graph disagrees with. The cost is
+   * one extra indexed query projecting four small columns, bounded by the same
+   * node budget as the graph endpoint.
+   *
+   * A record beyond that budget is absent from the map, so it reads as a root
+   * and falls back to its own `knowledge_type` — the same degradation the graph
+   * gives it by not emitting it at all.
+   */
+  private async knowledgeAncestors(
+    knowledgeTableId: string,
+    recordId: string,
+    ownTypeRecordId: string | null,
+    types: {
+      typeById: ReadonlyMap<string, IKnowledgeTypeRow>;
+      typeParentOf: ReadonlyMap<string, string | null>;
+    }
+  ): Promise<IAncestor[]> {
+    const knowledges = await this.readKnowledges(knowledgeTableId);
+    const knowledgeById = new Map(knowledges.map((k) => [k.recordId, k]));
+    const { parentOf } = breakCycles([...knowledges].sort(byTitleThenId));
+
+    const knowledgeChain = ancestorChain(
+      parentOf.get(recordId) ?? null,
+      knowledgeById,
+      parentOf,
+      KNOWLEDGE_NODE_PREFIX
+    );
+
+    // The type branch hangs off the ROOT of the knowledge chain, not off this
+    // record's own knowledge_type — the same anchor assembleKnowledgeGraph uses
+    // for rootTypeId, so the breadcrumb and the node colour agree about which
+    // branch of the taxonomy a nested record belongs to.
+    const rootRecordId = knowledgeChain[0]?.recordId ?? recordId;
+    const rootRow = knowledgeById.get(rootRecordId);
+    const anchorTypeId = rootRow ? rootRow.typeRecordId : ownTypeRecordId;
+
+    return [
+      ...ancestorChain(anchorTypeId, types.typeById, types.typeParentOf, TYPE_NODE_PREFIX),
+      ...knowledgeChain,
+    ];
   }
 
   /**
@@ -255,11 +355,15 @@ export class KnowledgeGraphService {
     const titleField = this.required(fields, KNOWLEDGE_FIELD.title, tableId);
     const deletedAtField = this.required(fields, KNOWLEDGE_FIELD.deletedAt, tableId);
     const knowledgeTypeField = fields.get(KNOWLEDGE_FIELD.knowledgeType);
+    const knowledgeParentField = fields.get(KNOWLEDGE_FIELD.knowledgeParent);
     const relatedKnowledgeField = fields.get(KNOWLEDGE_FIELD.relatedKnowledge);
 
-    const projection = [titleField.id, knowledgeTypeField?.id, relatedKnowledgeField?.id].filter(
-      (id): id is string => Boolean(id)
-    );
+    const projection = [
+      titleField.id,
+      knowledgeTypeField?.id,
+      knowledgeParentField?.id,
+      relatedKnowledgeField?.id,
+    ].filter((id): id is string => Boolean(id));
     const rows = await this.readRows(tableId, projection, deletedAtField.id);
 
     return rows.map((row) => ({
@@ -267,6 +371,12 @@ export class KnowledgeGraphService {
       title: (row.fields[titleField.id] as string | undefined) ?? '',
       typeRecordId: knowledgeTypeField
         ? extractLinkRecordId(row.fields[knowledgeTypeField.id])
+        : null,
+      // The ManyOne side only. The symmetric `knowledges` cell holds the same
+      // edges read from the other end, and children are derived by inverting
+      // this map — reading both would be two sources for one relationship.
+      parentRecordId: knowledgeParentField
+        ? extractLinkRecordId(row.fields[knowledgeParentField.id])
         : null,
       relatedRecordIds: relatedKnowledgeField
         ? extractRelatedRecordIds(row.fields[relatedKnowledgeField.id])

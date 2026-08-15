@@ -1,0 +1,11 @@
+/// <reference types="node" />
+/// <reference types="node" />
+/// <reference types="node" />
+/// <reference types="node" />
+/// <reference types="node" />
+/// <reference types="node" />
+/// <reference types="node" />
+/// <reference types="node" />
+export declare const getMetaDatabaseUrl: (env?: NodeJS.ProcessEnv) => string;
+export declare const getDataDatabaseUrl: (env?: NodeJS.ProcessEnv) => string;
+export declare const isSharedMetaDataDatabase: (env?: NodeJS.ProcessEnv) => boolean;

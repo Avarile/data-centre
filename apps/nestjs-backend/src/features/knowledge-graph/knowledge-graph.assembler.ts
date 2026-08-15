@@ -10,6 +10,7 @@ import {
   TYPE_NODE_PREFIX,
   UNCLASSIFIED_TYPE_NODE_ID,
 } from '@teable/openapi';
+import type { IHierarchyRow } from './knowledge-type-tree';
 import { breakCycles, resolveHierarchy, orderDepthFirst } from './knowledge-type-tree';
 
 /**
@@ -22,6 +23,9 @@ const TYPE_KNOWLEDGE_DISTANCE = 70;
  *  to its parent than a root is to core, but still farther than a leaf. */
 const TYPE_PARENT_DISTANCE = 90;
 const KNOWLEDGE_KNOWLEDGE_DISTANCE = 140;
+/** Shorter than type→knowledge: a nested knowledge should read as part of its
+ *  parent's lobe rather than as another leaf of the type. */
+const KNOWLEDGE_PARENT_DISTANCE = 50;
 
 /** Canonical key for an unordered pair. related_knowledge is two-way, so every
  *  association arrives twice — once from each end — and would otherwise render
@@ -33,19 +37,19 @@ const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
  *  check — no behaviour differs from the inline ternary. */
 const orderPair = (a: string, b: string): [string, string] => (a < b ? [a, b] : [b, a]);
 
-export interface IKnowledgeTypeRow {
-  recordId: string;
-  title: string;
-  /** recordId of the parent type, or null when this type is a root. */
-  parentRecordId: string | null;
-}
+/** `parentRecordId` is the `parent_type` link: the parent type, or null at a
+ *  root. Structurally identical to IHierarchyRow, and deliberately the same
+ *  type rather than a copy — both hierarchies run through the same engine. */
+export type IKnowledgeTypeRow = IHierarchyRow;
 
-/** Standalone, NOT extending IKnowledgeTypeRow: a knowledge has no parent type
- *  of its own, it has a type. Inheriting parentRecordId here would model the
- *  taxonomy edge twice. */
-export interface IKnowledgeRow {
-  recordId: string;
-  title: string;
+/**
+ * Extends IHierarchyRow because a knowledge now genuinely has a parent of its
+ * own kind (`knowledge_parent`), which is a different edge from its type. The
+ * two are not modelled twice: `parentRecordId` is the parent KNOWLEDGE and
+ * `typeRecordId` is the type, and only one of them is ever drawn — see
+ * buildKnowledgeLinks.
+ */
+export interface IKnowledgeRow extends IHierarchyRow {
   /** recordId of the linked knowledge_type, or null when unlinked/unresolvable */
   typeRecordId: string | null;
   /** recordIds from the two-way related_knowledge cell. */
@@ -77,18 +81,16 @@ export const byTitleThenId = (
 ) => a.title.localeCompare(b.title) || a.recordId.localeCompare(b.recordId);
 
 /**
- * Core-type for roots, type-parent for nested types, then type-knowledge for
- * every emitted knowledge. Split out of assembleKnowledgeGraph purely to keep
- * that function's cognitive complexity in check — no behaviour differs.
+ * Core-type for roots, type-parent for nested types, plus the synthetic
+ * bucket's tether. Split out of assembleKnowledgeGraph purely to keep that
+ * function's cognitive complexity in check — no behaviour differs.
  */
-const buildLinks = (
+const buildTypeLinks = (
   orderedTypes: IKnowledgeTypeRow[],
   parentOf: ReadonlyMap<string, string | null>,
   typeNodeId: (recordId: string) => string,
   childCount: ReadonlyMap<string, number>,
-  orphanCount: number,
-  emitted: IKnowledgeRow[],
-  bucketOf: (row: IKnowledgeRow) => string
+  orphanCount: number
 ): IKnowledgeGraphLink[] => {
   const links: IKnowledgeGraphLink[] = [];
   for (const type of orderedTypes) {
@@ -121,17 +123,73 @@ const buildLinks = (
       distance: CORE_TYPE_DISTANCE,
     });
   }
+  return links;
+};
+
+/**
+ * Exactly one structural edge per emitted knowledge: to its parent knowledge
+ * when it has one, otherwise to its type bucket. Never both — `parentId` on a
+ * node is single-valued, and depth, rootTypeId and the client's hidden-subtree
+ * filter all read the graph as a tree.
+ *
+ * Split out of assembleKnowledgeGraph alongside buildTypeLinks, which it used
+ * to be the tail of; keeping both tiers in one function meant seven parameters
+ * and two unrelated loops.
+ */
+const buildKnowledgeLinks = (
+  orderedKnowledges: IKnowledgeRow[],
+  knowledgeParentOf: ReadonlyMap<string, string | null>,
+  bucketOf: (row: IKnowledgeRow) => string
+): IKnowledgeGraphLink[] =>
+  orderedKnowledges.map((row) => {
+    const parent = knowledgeParentOf.get(row.recordId) ?? null;
+    const target = `${KNOWLEDGE_NODE_PREFIX}${row.recordId}`;
+    return parent === null
+      ? {
+          source: bucketOf(row),
+          target,
+          tier: 'type-knowledge',
+          value: 1,
+          distance: TYPE_KNOWLEDGE_DISTANCE,
+        }
+      : {
+          source: `${KNOWLEDGE_NODE_PREFIX}${parent}`,
+          target,
+          tier: 'knowledge-parent',
+          value: 1,
+          distance: KNOWLEDGE_PARENT_DISTANCE,
+        };
+  });
+
+/**
+ * Child tallies for the knowledge tier, in one pass: how many ROOT knowledges
+ * each type bucket holds, and how many child knowledges each parent knowledge
+ * holds.
+ *
+ * Only roots count towards a bucket. A nested knowledge hangs off its parent
+ * and draws no type edge, so counting it against its type would inflate that
+ * type's degree past its real edge count and — when the type is unresolvable —
+ * report an orphan that is not one.
+ */
+const countKnowledgeChildren = (
+  emitted: IKnowledgeRow[],
+  knowledgeParentOf: ReadonlyMap<string, string | null>,
+  bucketOf: (row: IKnowledgeRow) => string
+): { bucketCount: Map<string, number>; childKnowledgeCount: Map<string, number> } => {
+  const bucketCount = new Map<string, number>();
+  const childKnowledgeCount = new Map<string, number>();
 
   for (const row of emitted) {
-    links.push({
-      source: bucketOf(row),
-      target: `${KNOWLEDGE_NODE_PREFIX}${row.recordId}`,
-      tier: 'type-knowledge',
-      value: 1,
-      distance: TYPE_KNOWLEDGE_DISTANCE,
-    });
+    const parent = knowledgeParentOf.get(row.recordId) ?? null;
+    if (parent === null) {
+      const bucket = bucketOf(row);
+      bucketCount.set(bucket, (bucketCount.get(bucket) ?? 0) + 1);
+      continue;
+    }
+    childKnowledgeCount.set(parent, (childKnowledgeCount.get(parent) ?? 0) + 1);
   }
-  return links;
+
+  return { bucketCount, childKnowledgeCount };
 };
 
 /**
@@ -216,9 +274,83 @@ const buildRelationLinks = (
   };
 };
 
+interface IKnowledgeNodeContext {
+  orderedKnowledges: IKnowledgeRow[];
+  emitted: IKnowledgeRow[];
+  knowledgeParentOf: ReadonlyMap<string, string | null>;
+  knowledgeDepthOf: ReadonlyMap<string, number>;
+  knowledgeRootOf: ReadonlyMap<string, string>;
+  bucketOf: (row: IKnowledgeRow) => string;
+  depthOf: ReadonlyMap<string, number>;
+  rootNodeIdOf: (recordId: string) => string;
+  relationDegreeOf: (recordId: string) => number;
+  childKnowledgeCount: ReadonlyMap<string, number>;
+}
+
 /**
- * Turns two flat row sets into the 3-tier star. Pure: the only place graph
- * shape is decided, and the only place worth unit-testing on the backend.
+ * One node per emitted knowledge, in depth-first order so a parent is always
+ * emitted before its children — the same guarantee the type tier gives, and
+ * what the client's legend and hidden-subtree closure read the payload
+ * expecting.
+ *
+ * Split out of assembleKnowledgeGraph, along with the three bucket resolvers it
+ * owns, purely to keep that function's cognitive complexity in check — no
+ * behaviour differs.
+ */
+const buildKnowledgeNodes = (ctx: IKnowledgeNodeContext): IKnowledgeGraphNode[] => {
+  // Knowledge nodes inherit depth and root from their bucket. The unclassified
+  // bucket is a root, so it resolves to depth 0 and itself.
+  const depthOfBucket = (bucketId: string) =>
+    bucketId === UNCLASSIFIED_TYPE_NODE_ID
+      ? 0
+      : ctx.depthOf.get(bucketId.slice(TYPE_NODE_PREFIX.length)) ?? 0;
+  const rootOfBucket = (bucketId: string) =>
+    bucketId === UNCLASSIFIED_TYPE_NODE_ID
+      ? UNCLASSIFIED_TYPE_NODE_ID
+      : ctx.rootNodeIdOf(bucketId.slice(TYPE_NODE_PREFIX.length));
+
+  /**
+   * The type bucket a knowledge's whole chain hangs from: its own bucket when
+   * it is a root, otherwise the bucket of the root of its chain.
+   *
+   * This is what keeps `rootTypeId` a TYPE id at every nesting depth. The
+   * client hashes that id into a hue, so a `kn:` value there would split a
+   * nested subtree away from its own colour family — and a null would grey it
+   * out entirely. The cost is deliberate and disclosed: a knowledge filed under
+   * one type but nested under a parent rooted in another renders in the
+   * parent's family, because nesting is the stronger statement of the two.
+   */
+  const rowOf = new Map(ctx.emitted.map((row) => [row.recordId, row]));
+  const anchorBucketOf = (recordId: string): string => {
+    const root = ctx.knowledgeRootOf.get(recordId) ?? recordId;
+    const row = rowOf.get(root);
+    return row ? ctx.bucketOf(row) : UNCLASSIFIED_TYPE_NODE_ID;
+  };
+
+  return ctx.orderedKnowledges.map((row) => {
+    const parent = ctx.knowledgeParentOf.get(row.recordId) ?? null;
+    const anchor = anchorBucketOf(row.recordId);
+    return {
+      id: `${KNOWLEDGE_NODE_PREFIX}${row.recordId}`,
+      recordId: row.recordId,
+      tier: 'knowledge',
+      label: row.title,
+      parentId: parent === null ? ctx.bucketOf(row) : `${KNOWLEDGE_NODE_PREFIX}${parent}`,
+      rootTypeId: rootOfBucket(anchor),
+      depth: depthOfBucket(anchor) + 1 + (ctx.knowledgeDepthOf.get(row.recordId) ?? 0),
+      // 1 for its own structural edge — to a parent knowledge or to a type,
+      // never both — plus its child knowledges and every deduped relation
+      // touching this record.
+      degree:
+        1 + ctx.relationDegreeOf(row.recordId) + (ctx.childKnowledgeCount.get(row.recordId) ?? 0),
+    };
+  });
+};
+
+/**
+ * Turns two flat row sets into the 3-tier star, with both tiers free to nest
+ * within themselves. Pure: the only place graph shape is decided, and the only
+ * place worth unit-testing on the backend.
  */
 export const assembleKnowledgeGraph = (
   types: IKnowledgeTypeRow[],
@@ -249,6 +381,22 @@ export const assembleKnowledgeGraph = (
   const truncated = sorted.length > maxKnowledgeNodes;
   const emitted = truncated ? sorted.slice(0, maxKnowledgeNodes) : sorted;
 
+  // The same engine as the type pass above, over knowledge_parent. `emitted` is
+  // already sorted with byTitleThenId — the precondition breakCycles documents
+  // — and passing the POST-truncation set is deliberate: breakCycles builds its
+  // `known` set from the rows it is handed, so a parent dropped by the node
+  // budget resolves to null and its child falls back to a type bucket instead
+  // of pointing at a node that was never emitted.
+  const { parentOf: knowledgeParentOf, cyclesDropped: knowledgeCyclesDropped } =
+    breakCycles(emitted);
+  const { depthOf: knowledgeDepthOf, rootOf: knowledgeRootOf } =
+    resolveHierarchy(knowledgeParentOf);
+  const orderedKnowledges = orderDepthFirst(emitted, knowledgeParentOf);
+  const maxKnowledgeDepth = orderedKnowledges.reduce(
+    (max, row) => Math.max(max, knowledgeDepthOf.get(row.recordId) ?? 0),
+    0
+  );
+
   // Relations are computed before the node loop below: node `degree` counts
   // them, so degree cannot be assigned until relationDegree exists.
   const emittedIds = new Set(emitted.map((row) => row.recordId));
@@ -267,11 +415,11 @@ export const assembleKnowledgeGraph = (
 
   // Child counts are computed over the EMITTED set only, so orphanCount can never
   // exceed knowledgeCount and no synthetic bucket outlives its children.
-  const childCount = new Map<string, number>();
-  for (const row of emitted) {
-    const bucket = bucketOf(row);
-    childCount.set(bucket, (childCount.get(bucket) ?? 0) + 1);
-  }
+  const { bucketCount: childCount, childKnowledgeCount } = countKnowledgeChildren(
+    emitted,
+    knowledgeParentOf,
+    bucketOf
+  );
   const orphanCount = childCount.get(UNCLASSIFIED_TYPE_NODE_ID) ?? 0;
 
   // Every real type is emitted even with zero children — an empty branch is a
@@ -338,42 +486,25 @@ export const assembleKnowledgeGraph = (
     });
   }
 
-  // Knowledge nodes inherit depth and root from their bucket. The unclassified
-  // bucket is a root, so it resolves to depth 0 and itself.
-  const depthOfBucket = (bucketId: string) =>
-    bucketId === UNCLASSIFIED_TYPE_NODE_ID
-      ? 0
-      : depthOf.get(bucketId.slice(TYPE_NODE_PREFIX.length)) ?? 0;
-  const rootOfBucket = (bucketId: string) =>
-    bucketId === UNCLASSIFIED_TYPE_NODE_ID
-      ? UNCLASSIFIED_TYPE_NODE_ID
-      : rootNodeIdOf(bucketId.slice(TYPE_NODE_PREFIX.length));
-
-  for (const row of emitted) {
-    const bucket = bucketOf(row);
-    nodes.push({
-      id: `${KNOWLEDGE_NODE_PREFIX}${row.recordId}`,
-      recordId: row.recordId,
-      tier: 'knowledge',
-      label: row.title,
-      parentId: bucket,
-      rootTypeId: rootOfBucket(bucket),
-      depth: depthOfBucket(bucket) + 1,
-      // 1 for the type link, plus every deduped relation touching this record.
-      degree: 1 + relationDegreeOf(row.recordId),
-    });
-  }
-
-  // Links: core-type for roots only, type-parent for the rest.
-  const links = buildLinks(
-    orderedTypes,
-    parentOf,
-    typeNodeId,
-    childCount,
-    orphanCount,
-    emitted,
-    bucketOf
+  nodes.push(
+    ...buildKnowledgeNodes({
+      orderedKnowledges,
+      emitted,
+      knowledgeParentOf,
+      knowledgeDepthOf,
+      knowledgeRootOf,
+      bucketOf,
+      depthOf,
+      rootNodeIdOf,
+      relationDegreeOf,
+      childKnowledgeCount,
+    })
   );
+
+  // Links: core-type for roots only, type-parent for the rest, then exactly one
+  // structural edge per knowledge.
+  const links = buildTypeLinks(orderedTypes, parentOf, typeNodeId, childCount, orphanCount);
+  links.push(...buildKnowledgeLinks(orderedKnowledges, knowledgeParentOf, bucketOf));
 
   // Relations share the same `maxLinks` budget as the structural links above,
   // but never displace them — see buildRelationLinks.
@@ -396,6 +527,8 @@ export const assembleKnowledgeGraph = (
       truncated: { nodes: truncated, links: relationsTruncated },
       cyclesDropped,
       maxDepth,
+      maxKnowledgeDepth,
+      knowledgeCyclesDropped,
       relationCount,
       danglingRelations,
     },

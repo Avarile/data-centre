@@ -17,15 +17,15 @@ export const getKnowledgeGraphNodeVoSchema = z.object({
   tier: knowledgeDetailTierSchema,
   label: z.string(),
   context: z.string().nullable().meta({ description: 'Full body text; may be long.' }),
-  parentId: z
-    .string()
-    .nullable()
-    .meta({ description: 'Parent node id: a type for a knowledge, a parent type for a type.' }),
+  parentId: z.string().nullable().meta({
+    description:
+      'Parent node id: a parent type for a type; a parent knowledge for a nested knowledge, otherwise its type.',
+  }),
   parentLabel: z.string().nullable(),
-  ancestors: z
-    .object({ id: z.string(), label: z.string() })
-    .array()
-    .meta({ description: 'Root-first breadcrumb, excluding this node. Empty for a root type.' }),
+  ancestors: z.object({ id: z.string(), label: z.string() }).array().meta({
+    description:
+      'Root-first breadcrumb, excluding this node. For a nested knowledge it spans both hierarchies: the type chain of the root knowledge, then the knowledge chain down to the immediate parent. Empty for a root type.',
+  }),
   relatedCount: z.number().int().meta({ description: 'Peer relations; always 0 for a type node.' }),
   createdTime: z.string().nullable(),
   lastModifiedTime: z.string().nullable(),

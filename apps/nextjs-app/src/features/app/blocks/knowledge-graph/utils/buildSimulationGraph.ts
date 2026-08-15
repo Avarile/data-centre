@@ -19,23 +19,33 @@ export interface ISimulationGraph {
 export const EMPTY_SIMULATION_GRAPH: ISimulationGraph = { nodes: [], links: [] };
 
 /**
- * Expands the user's hidden type ids to include every descendant type.
+ * Expands the user's hidden type ids to every descendant, across BOTH tiers.
+ *
+ * Cascades over every non-core node rather than types alone. A knowledge nested
+ * under another knowledge points at a `kn:` parent, so a type-only pass would
+ * hide a type's direct knowledges and leave the whole nested subtree behind —
+ * and because the link filter below drops any edge with a missing endpoint,
+ * those survivors would render as edgeless nodes floating in the scene.
  *
  * Iterates to a fixpoint rather than assuming an ordering: the assembler does
  * emit parents before children, but relying on that here would couple the
  * client's filter to the server's emission order, and the coupling would be
  * invisible until someone reordered the assembler.
+ *
+ * Note the returned set can now contain knowledge ids as well as type ids. The
+ * legend counts hidden TYPES, so KnowledgeGraph.tsx narrows it back down before
+ * passing it there.
  */
 export const hiddenClosure = (
   nodes: readonly IKnowledgeGraphNode[],
   hiddenTypeIds: readonly string[]
 ): Set<string> => {
   const hidden = new Set(hiddenTypeIds);
-  const typeNodes = nodes.filter((node) => node.tier === 'type');
+  const cascadable = nodes.filter((node) => node.tier !== 'core');
   let changed = true;
   while (changed) {
     changed = false;
-    for (const node of typeNodes) {
+    for (const node of cascadable) {
       if (!hidden.has(node.id) && node.parentId && hidden.has(node.parentId)) {
         hidden.add(node.id);
         changed = true;
@@ -62,15 +72,10 @@ export const buildSimulationGraph = (
   }
 
   const hidden = hiddenClosure(graph.nodes, hiddenTypeIds);
-  const keep = (node: IKnowledgeGraphNode): boolean => {
-    if (node.tier === 'core') {
-      return true;
-    }
-    if (node.tier === 'type') {
-      return !hidden.has(node.id);
-    }
-    return !hidden.has(node.parentId ?? '');
-  };
+  // One rule for both tiers, now that the closure carries every hidden node id
+  // rather than type ids only. The previous knowledge branch tested the node's
+  // PARENT, which silently assumed that parent was always a type.
+  const keep = (node: IKnowledgeGraphNode): boolean => node.tier === 'core' || !hidden.has(node.id);
 
   // Clone every node. react-force-graph MUTATES what it is given — it writes
   // x/y/z/vx/vy/vz onto nodes and replaces link.source/target with node object

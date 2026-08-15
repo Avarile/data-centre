@@ -3,8 +3,14 @@ import { z } from '../zod';
 /**
  * Payload shape version. Bump when the node/link schema changes in a
  * non-additive way so clients can detect an incompatible server.
+ *
+ * 3 added `knowledge-parent`: a knowledge can nest under another knowledge, so
+ * `parentId` on a knowledge node no longer necessarily names a type, and any
+ * client with an exhaustive lookup keyed by the link tier is incomplete against
+ * a v3 payload. `maxKnowledgeDepth` and `knowledgeCyclesDropped` joined stats
+ * in the same release; those two alone would have been additive.
  */
-export const KNOWLEDGE_GRAPH_VERSION = 2;
+export const KNOWLEDGE_GRAPH_VERSION = 3;
 
 export const KNOWLEDGE_CORE_NODE_ID = 'core';
 export const TYPE_NODE_PREFIX = 'type:';
@@ -21,11 +27,15 @@ export const KnowledgeNodeTierValues = ['core', 'type', 'knowledge'] as const;
 export type KnowledgeNodeTier = (typeof KnowledgeNodeTierValues)[number];
 export const knowledgeNodeTierSchema = z.enum(KnowledgeNodeTierValues);
 
-// core -> type (roots only) -> nested types -> knowledge, plus peer relations.
+// core -> type (roots only) -> nested types -> knowledge -> nested knowledge,
+// plus peer relations.
 export const KnowledgeLinkTierValues = [
   'core-type',
   'type-parent',
   'type-knowledge',
+  // A knowledge nested under another knowledge. Structural, like the three
+  // above: the link budget may never drop it, only relations truncate.
+  'knowledge-parent',
   'knowledge-knowledge',
 ] as const;
 export type KnowledgeLinkTier = (typeof KnowledgeLinkTierValues)[number];
@@ -43,14 +53,15 @@ export const knowledgeGraphNodeSchema = z.object({
   label: z.string().meta({ description: 'Display title.' }),
   parentId: z.string().nullable().meta({
     description:
-      'Structural parent: a type points at its parent type (or core at a root), a knowledge at its type.',
+      'Structural parent, always exactly one: a type points at its parent type (or core at a root); a knowledge at its parent knowledge, or at its type when it has none.',
   }),
   rootTypeId: z.string().nullable().meta({
-    description: 'Top ancestor type. The colour key — a whole subtree shares a hue family.',
+    description:
+      'Top ancestor TYPE, at every nesting depth — a nested knowledge resolves it through the root of its knowledge chain. The colour key: a whole subtree shares a hue family.',
   }),
   depth: z.number().int().meta({
     description:
-      'Nesting depth. 0 at a root type; a knowledge is its type + 1. Not meaningful for core, which reports 0.',
+      'Nesting depth. 0 at a root type; a root knowledge is its type + 1; a nested knowledge is its parent knowledge + 1. Not meaningful for core, which reports 0.',
   }),
   degree: z.number().int().meta({ description: 'Adjacent node count, precomputed for sizing.' }),
 });
@@ -68,10 +79,10 @@ export type IKnowledgeGraphLink = z.infer<typeof knowledgeGraphLinkSchema>;
 export const knowledgeGraphStatsSchema = z.object({
   typeCount: z.number().int(),
   knowledgeCount: z.number().int(),
-  orphanCount: z
-    .number()
-    .int()
-    .meta({ description: 'Emitted knowledges with no resolvable type.' }),
+  orphanCount: z.number().int().meta({
+    description:
+      'Emitted ROOT knowledges with no resolvable type. A nested knowledge hangs off its parent and draws no type edge, so it is never an orphan.',
+  }),
   nodeCount: z.number().int(),
   linkCount: z.number().int(),
   truncated: z
@@ -83,8 +94,15 @@ export const knowledgeGraphStatsSchema = z.object({
   cyclesDropped: z
     .number()
     .int()
-    .meta({ description: 'Parent edges cut to keep the type taxonomy acyclic.' }),
-  maxDepth: z.number().int().meta({ description: 'Deepest type nesting level reached.' }),
+    .meta({ description: 'parent_type edges cut to keep the type taxonomy acyclic.' }),
+  maxDepth: z.number().int().meta({ description: 'Deepest TYPE nesting level reached.' }),
+  maxKnowledgeDepth: z.number().int().meta({
+    description: 'Deepest knowledge-under-knowledge nesting level reached. 0 when nothing nests.',
+  }),
+  knowledgeCyclesDropped: z
+    .number()
+    .int()
+    .meta({ description: 'knowledge_parent edges cut to keep the knowledge tree acyclic.' }),
   relationCount: z
     .number()
     .int()

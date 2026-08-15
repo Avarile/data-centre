@@ -26,6 +26,15 @@ export interface KnowledgeFields {
   knowledge_type?: LinkCell;
   /** Two-way self-link, v2. Read with linkIds(). */
   related_knowledge?: LinkCell[];
+  /**
+   * Self-link to the parent knowledge, v3. Empty means this is top-level.
+   * Single-valued (ManyOne), so read with linkId(), not linkIds().
+   *
+   * Read-only here, exactly as `parent_type` is on KnowledgeTypeFields: the
+   * symmetric `knowledges` children cell is deliberately not modelled, since
+   * children are derived by inverting this pointer rather than stored twice.
+   */
+  knowledge_parent?: LinkCell;
   // read-only
   id?: number;
   created_at?: string;

@@ -85,10 +85,15 @@ export const KnowledgeGraph = () => {
   // back into the store: the store's contract is "ids the user clicked", and
   // storing the closure would double-apply it (hiddenClosure would then
   // expand an already-expanded set) and break showAllTypes/un-hiding.
-  const legendHiddenTypeIds = useMemo(
-    () => Array.from(hiddenClosure(data?.nodes ?? [], hiddenTypeIds)),
-    [data, hiddenTypeIds]
-  );
+  //
+  // Narrowed to type ids on the way out: since nested knowledge, the closure
+  // also carries the `kn:` ids it cascaded onto, and the legend derives its
+  // "N hidden" / "all hidden" footer by counting this list against its own
+  // type rows. Handing it the raw closure would over-report both.
+  const legendHiddenTypeIds = useMemo(() => {
+    const closure = hiddenClosure(data?.nodes ?? [], hiddenTypeIds);
+    return typeNodes.filter((node) => closure.has(node.id)).map((node) => node.id);
+  }, [data, hiddenTypeIds, typeNodes]);
   const searchableNodes = useMemo(
     () => (data?.nodes ?? []).filter((node) => node.tier !== 'core'),
     [data]
@@ -102,7 +107,14 @@ export const KnowledgeGraph = () => {
     if (!focusedNode?.parentId) {
       return 0;
     }
-    return (data?.nodes ?? []).filter((node) => node.parentId === focusedNode.parentId).length;
+    // Tier-matched: one parent now holds two kinds of child — a type has child
+    // types and knowledges, a knowledge has nested knowledges and peer
+    // relations — and those are not siblings of each other. Matching on
+    // parentId alone counted a type's child types as siblings of its
+    // knowledges, which the i18n string ("sibling knowledges") never meant.
+    return (data?.nodes ?? []).filter(
+      (node) => node.parentId === focusedNode.parentId && node.tier === focusedNode.tier
+    ).length;
   }, [data, focusedNode]);
 
   const handleSelectNode = useCallback(
@@ -143,7 +155,7 @@ export const KnowledgeGraph = () => {
   return (
     // overflow-hidden, not overflow-y-auto: a scrollbar around a measured canvas
     // creates a ResizeObserver <-> scrollbar feedback loop.
-    <div className="flex h-screen flex-col overflow-hidden bg-background">
+    <div className="bg-background flex h-screen flex-col overflow-hidden">
       <Head>
         <title>{t('common:noun.knowledgeGraph')}</title>
       </Head>
@@ -188,7 +200,7 @@ export const KnowledgeGraph = () => {
         {data && graph.nodes.length <= 1 && (
           <div className="flex size-full flex-col items-center justify-center gap-1 p-8 text-center">
             <p className="text-sm font-medium">{t('knowledgeGraph:empty.title')}</p>
-            <p className="max-w-sm text-xs text-muted-foreground">
+            <p className="text-muted-foreground max-w-sm text-xs">
               {t('knowledgeGraph:empty.description')}
             </p>
           </div>

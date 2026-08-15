@@ -99,7 +99,16 @@ const TYPE_VAL_SCALE = 0.025;
 export const NODE_VAL: Record<KnowledgeNodeTier, (degree: number) => number> = {
   core: () => 40 * CORE_VAL_SCALE,
   type: (degree) => (8 + Math.min(degree, 40) * 0.6) * TYPE_VAL_SCALE,
-  knowledge: () => KNOWLEDGE_NODE_VAL,
+  // Degree-aware since v3, so a knowledge that others nest under reads as a
+  // hub rather than as one more leaf. Anchored at degree 1 — a leaf carries
+  // exactly one structural edge, no children and no relations — so every node
+  // that existed before nesting keeps its exact previous size.
+  //
+  // The cap is what preserves the tier invariant above: the maximum here is
+  // KNOWLEDGE_NODE_VAL * 4 = 0.15, still under a childless type's 0.2, so a
+  // well-connected knowledge can never out-size the type holding it. Raising
+  // either the 12 or the 0.25 means re-checking that pair.
+  knowledge: (degree) => KNOWLEDGE_NODE_VAL * (1 + Math.min(Math.max(degree - 1, 0), 12) * 0.25),
 };
 export const DEFAULT_NODE_VAL = KNOWLEDGE_NODE_VAL;
 
@@ -116,6 +125,22 @@ export const LINK_DISTANCE: Record<KnowledgeLinkTier, number> = {
   // core-type radius, so nesting reads as proximity.
   'type-parent': 90,
   'type-knowledge': 32,
+  // Shorter than type-knowledge, so a nested knowledge sits INSIDE its parent's
+  // lobe rather than beside it as another leaf of the type — that difference is
+  // the only thing distinguishing the two relationships on screen, since links
+  // are painted one flat colour.
+  //
+  // Coupled to CHARGE_DISTANCE_MAX like type-knowledge, but in the opposite
+  // direction to what a chain length of 32 + 24 suggests. Replaying the layout
+  // headlessly (the harness in the organic-clusters doc, extended to nest a
+  // fraction of leaves onto sibling leaves) measures the mean cluster radius
+  // FALLING as nesting rises — 52→44 at the 1000-node budget going from no
+  // nesting to 60% — because a nested leaf sits 24 from its parent rather than
+  // 32 from the type. Outward bias stays within |0.005|-|0.071| and the closest
+  // type pair holds 1.5-3.5x the cluster radius at every point in that sweep.
+  // So this buys headroom under the 110 cap rather than spending it; raising it
+  // past type-knowledge's 32 is what would need the pair re-checked.
+  'knowledge-parent': 24,
   // Long relative to a cluster's own radius (~53), so a relation reaches across
   // the gap between two clusters instead of trying to plant one inside the
   // other's radius, which is what pulls them into a single blob. 180 rather
@@ -149,6 +174,13 @@ export const LINK_STRENGTH: Record<KnowledgeLinkTier, number> = {
   // nesting reads as nesting rather than as one merged cluster.
   'type-parent': 0.35,
   'type-knowledge': 0.7,
+  // Stiffer than type-knowledge, not looser: this is the tightest binding in
+  // the graph, because a nested knowledge and its parent are one object in a
+  // way a type and its leaves are not. Deliberately the opposite ordering from
+  // type-parent vs type-knowledge, where a subtree is held LOOSER so nesting
+  // reads as nesting — at the leaf scale the nodes are small enough that a
+  // looser hold would just read as noise rather than as structure.
+  'knowledge-parent': 0.8,
   // Long and weak on purpose. This is the only edge that crosses clusters, and
   // the cluster layout depends on repulsion staying local — a relation should
   // bend the arrangement, not drag two clusters into one.

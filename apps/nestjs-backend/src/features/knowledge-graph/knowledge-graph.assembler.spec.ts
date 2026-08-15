@@ -13,6 +13,10 @@ import type {
 import { assembleKnowledgeGraph } from './knowledge-graph.assembler';
 
 const KNOWLEDGE_KNOWLEDGE = 'knowledge-knowledge' as const;
+const TYPE_KNOWLEDGE = 'type-knowledge' as const;
+const KNOWLEDGE_PARENT = 'knowledge-parent' as const;
+/** The node id of the `recT1` fixture type, reused across the base suite. */
+const TYPE_T1 = 'type:recT1';
 
 const OPTS: IAssembleOptions = {
   maxKnowledgeNodes: 100,
@@ -31,8 +35,11 @@ const knowledge = (
   recordId: string,
   title: string,
   typeRecordId: string | null = null,
-  relatedRecordIds: string[] = []
-): IKnowledgeRow => ({ recordId, title, typeRecordId, relatedRecordIds });
+  relatedRecordIds: string[] = [],
+  /** knowledge_parent — the parent KNOWLEDGE, not the type. Trailing and
+   *  optional so every pre-v3 call site is unchanged. */
+  parentRecordId: string | null = null
+): IKnowledgeRow => ({ recordId, title, typeRecordId, relatedRecordIds, parentRecordId });
 
 describe('assembleKnowledgeGraph', () => {
   it('emits exactly one core node for empty input', () => {
@@ -59,6 +66,8 @@ describe('assembleKnowledgeGraph', () => {
       truncated: { nodes: false, links: false },
       cyclesDropped: 0,
       maxDepth: 0,
+      maxKnowledgeDepth: 0,
+      knowledgeCyclesDropped: 0,
       relationCount: 0,
       danglingRelations: 0,
     });
@@ -84,11 +93,11 @@ describe('assembleKnowledgeGraph', () => {
     );
 
     const node = graph.nodes.find((n) => n.id === 'kn:recK1');
-    expect(node).toMatchObject({ tier: 'knowledge', parentId: 'type:recT1', recordId: 'recK1' });
+    expect(node).toMatchObject({ tier: 'knowledge', parentId: TYPE_T1, recordId: 'recK1' });
 
-    const childLinks = graph.links.filter((l) => l.tier === 'type-knowledge');
+    const childLinks = graph.links.filter((l) => l.tier === TYPE_KNOWLEDGE);
     expect(childLinks).toEqual([
-      { source: 'type:recT1', target: 'kn:recK1', tier: 'type-knowledge', value: 1, distance: 70 },
+      { source: TYPE_T1, target: 'kn:recK1', tier: TYPE_KNOWLEDGE, value: 1, distance: 70 },
     ]);
     expect(graph.stats.orphanCount).toBe(0);
   });
@@ -198,7 +207,7 @@ describe('assembleKnowledgeGraph', () => {
     }
   });
 
-  it('gives every knowledge node a parentId that resolves to an emitted type node', () => {
+  it('gives every knowledge node a parentId that resolves to an emitted node', () => {
     const graph = assembleKnowledgeGraph(
       [type('recT1', 'Alpha'), type('recT2', 'Beta')],
       [
@@ -206,28 +215,33 @@ describe('assembleKnowledgeGraph', () => {
         knowledge('recK2', 'b', 'recT2'),
         knowledge('recK3', 'c', null),
         knowledge('recK4', 'd', 'recGone'),
+        // Nested: its parentId is a kn: id, not a type id.
+        knowledge('recK5', 'e', 'recT1', [], 'recK1'),
       ],
       OPTS
     );
 
-    const typeIds = new Set(graph.nodes.filter((n) => n.tier === 'type').map((n) => n.id));
+    // Widened from "an emitted TYPE node" in v2: a nested knowledge points at
+    // its parent knowledge instead. What must still hold is that the pointer
+    // always resolves to something the payload actually emitted.
+    const emittedIds = new Set(graph.nodes.filter((n) => n.tier !== 'core').map((n) => n.id));
     const knowledgeNodes = graph.nodes.filter((n) => n.tier === 'knowledge');
 
-    expect(knowledgeNodes).toHaveLength(4);
+    expect(knowledgeNodes).toHaveLength(5);
     for (const node of knowledgeNodes) {
       expect(node.parentId).not.toBeNull();
-      expect(typeIds.has(node.parentId as string)).toBe(true);
+      expect(emittedIds.has(node.parentId as string)).toBe(true);
     }
   });
 
   describe('v2 node fields', () => {
     it('gives every type a core parent, itself as root, and depth 0', () => {
       const graph = assembleKnowledgeGraph([type('recT1', 'Alpha')], [], OPTS);
-      const alpha = graph.nodes.find((n) => n.id === 'type:recT1');
+      const alpha = graph.nodes.find((n) => n.id === TYPE_T1);
 
       expect(alpha).toMatchObject({
         parentId: KNOWLEDGE_CORE_NODE_ID,
-        rootTypeId: 'type:recT1',
+        rootTypeId: TYPE_T1,
         depth: 0,
       });
     });
@@ -241,8 +255,8 @@ describe('assembleKnowledgeGraph', () => {
       const kn = graph.nodes.find((n) => n.id === 'kn:recK1');
 
       expect(kn).toMatchObject({
-        parentId: 'type:recT1',
-        rootTypeId: 'type:recT1',
+        parentId: TYPE_T1,
+        rootTypeId: TYPE_T1,
         depth: 1,
       });
     });
@@ -382,6 +396,197 @@ describe('nested types', () => {
     const order = graph.nodes.filter((n) => n.tier === 'type').map((n) => n.id);
 
     expect(order).toEqual(['type:a', 'type:b', 'type:c']);
+  });
+});
+
+describe('nested knowledge', () => {
+  it('reports depth and root ancestor down a three-level chain', () => {
+    const graph = assembleKnowledgeGraph(
+      [type('t', 'Alpha')],
+      [
+        knowledge('k1', 'aaa', 't'),
+        knowledge('k2', 'bbb', 't', [], 'k1'),
+        knowledge('k3', 'ccc', 't', [], 'k2'),
+      ],
+      OPTS
+    );
+    const at = (id: string) => graph.nodes.find((n) => n.id === `kn:${id}`);
+
+    // rootTypeId stays a TYPE id all the way down — it is the colour key, and a
+    // kn: value there would split the subtree off its own hue family.
+    expect(at('k1')).toMatchObject({ parentId: 'type:t', rootTypeId: 'type:t', depth: 1 });
+    expect(at('k2')).toMatchObject({ parentId: 'kn:k1', rootTypeId: 'type:t', depth: 2 });
+    expect(at('k3')).toMatchObject({ parentId: 'kn:k2', rootTypeId: 'type:t', depth: 3 });
+    expect(graph.stats.maxKnowledgeDepth).toBe(2);
+  });
+
+  it('draws exactly one structural edge per knowledge, never both', () => {
+    const graph = assembleKnowledgeGraph(
+      [type('t', 'Alpha')],
+      [knowledge('k1', 'aaa', 't'), knowledge('k2', 'bbb', 't', [], 'k1')],
+      OPTS
+    );
+
+    // k2 has a knowledge_type too, but the parent wins and no type edge is drawn.
+    expect(graph.links.filter((l) => l.tier === TYPE_KNOWLEDGE)).toEqual([
+      { source: 'type:t', target: 'kn:k1', tier: TYPE_KNOWLEDGE, value: 1, distance: 70 },
+    ]);
+    expect(graph.links.filter((l) => l.tier === KNOWLEDGE_PARENT)).toEqual([
+      {
+        source: 'kn:k1',
+        target: 'kn:k2',
+        tier: KNOWLEDGE_PARENT,
+        value: 1,
+        distance: expect.any(Number),
+      },
+    ]);
+  });
+
+  it('excludes nested knowledges from their type degree and child count', () => {
+    const graph = assembleKnowledgeGraph(
+      [type('t', 'Alpha')],
+      [knowledge('k1', 'aaa', 't'), knowledge('k2', 'bbb', 't', [], 'k1')],
+      OPTS
+    );
+
+    // The type has one edge, to k1. Counting k2 as well would report a degree
+    // higher than the type's real edge count.
+    expect(graph.nodes.find((n) => n.id === 'type:t')?.degree).toBe(1);
+    expect(graph.links.find((l) => l.tier === 'core-type')?.value).toBe(1);
+  });
+
+  it('counts child knowledges in the parent degree, additively with relations', () => {
+    const graph = assembleKnowledgeGraph(
+      [],
+      [
+        knowledge('k1', 'aaa', null, ['k4']),
+        knowledge('k2', 'bbb', null, [], 'k1'),
+        knowledge('k3', 'ccc', null, [], 'k1'),
+        knowledge('k4', 'ddd', null, ['k1']),
+      ],
+      OPTS
+    );
+
+    // 1 own structural edge + 2 children + 1 relation.
+    expect(graph.nodes.find((n) => n.id === 'kn:k1')?.degree).toBe(4);
+    expect(graph.nodes.find((n) => n.id === 'kn:k2')?.degree).toBe(1);
+  });
+
+  it('never counts a nested knowledge as an orphan, even with no type of its own', () => {
+    const graph = assembleKnowledgeGraph(
+      [type('t', 'Alpha')],
+      [knowledge('k1', 'aaa', 't'), knowledge('k2', 'bbb', null, [], 'k1')],
+      OPTS
+    );
+
+    // k2 has no resolvable type, but it hangs off k1 and draws no type edge, so
+    // it is not unclassified — and the synthetic bucket is never emitted.
+    expect(graph.stats.orphanCount).toBe(0);
+    expect(graph.nodes.some((n) => n.id === UNCLASSIFIED_TYPE_NODE_ID)).toBe(false);
+    expect(graph.nodes.find((n) => n.id === 'kn:k2')).toMatchObject({
+      parentId: 'kn:k1',
+      rootTypeId: 'type:t',
+    });
+  });
+
+  it('colours a nested knowledge by its parent family, not its own type', () => {
+    const graph = assembleKnowledgeGraph(
+      [type('t1', 'Alpha'), type('t2', 'Beta')],
+      // k2 is filed under Beta but nested under a knowledge rooted in Alpha.
+      [knowledge('k1', 'aaa', 't1'), knowledge('k2', 'bbb', 't2', [], 'k1')],
+      OPTS
+    );
+
+    // Pins the disclosed trade-off: nesting is the stronger statement, so the
+    // whole subtree keeps one hue. Flip this and clusters go multicoloured.
+    expect(graph.nodes.find((n) => n.id === 'kn:k2')?.rootTypeId).toBe('type:t1');
+  });
+
+  it('falls back to the type bucket when the parent is truncated away', () => {
+    // 'zzz' sorts last, so the budget of 1 keeps 'aaa' (the child) and drops
+    // 'zzz' (its parent).
+    const graph = assembleKnowledgeGraph(
+      [type('t', 'Alpha')],
+      [knowledge('k1', 'aaa', 't', [], 'k2'), knowledge('k2', 'zzz', 't')],
+      { ...OPTS, maxKnowledgeNodes: 1 }
+    );
+
+    expect(graph.stats.truncated.nodes).toBe(true);
+    expect(graph.nodes.find((n) => n.id === 'kn:k1')).toMatchObject({
+      parentId: 'type:t',
+      depth: 1,
+    });
+    expect(graph.links.filter((l) => l.tier === KNOWLEDGE_PARENT)).toHaveLength(0);
+    expect(graph.stats.orphanCount).toBe(0);
+  });
+
+  it('treats a self-parent as a root and counts it separately from type cycles', () => {
+    const graph = assembleKnowledgeGraph(
+      [type('t', 'Alpha')],
+      [knowledge('k1', 'aaa', 't', [], 'k1')],
+      OPTS
+    );
+
+    expect(graph.nodes.find((n) => n.id === 'kn:k1')).toMatchObject({ parentId: 'type:t' });
+    expect(graph.stats.knowledgeCyclesDropped).toBe(1);
+    // The two hierarchies report their cut edges separately.
+    expect(graph.stats.cyclesDropped).toBe(0);
+  });
+
+  it('breaks a two-cycle and drops the SAME edge on every run', () => {
+    const rows = () => [
+      knowledge('k1', 'aaa', null, [], 'k2'),
+      knowledge('k2', 'bbb', null, [], 'k1'),
+    ];
+    const first = assembleKnowledgeGraph([], rows(), OPTS);
+    const again = assembleKnowledgeGraph([], rows(), OPTS);
+
+    expect(first.stats.knowledgeCyclesDropped).toBe(1);
+    // The ETag is a digest of this payload, so a nondeterministic cut would
+    // churn it between two identical requests.
+    expect(JSON.stringify(again)).toBe(JSON.stringify(first));
+  });
+
+  it('treats a parent pointing at a missing knowledge as a root, not as a drop', () => {
+    const graph = assembleKnowledgeGraph(
+      [type('t', 'Alpha')],
+      [knowledge('k1', 'aaa', 't', [], 'ghost')],
+      OPTS
+    );
+
+    expect(graph.nodes.find((n) => n.id === 'kn:k1')).toMatchObject({ parentId: 'type:t' });
+    expect(graph.stats.knowledgeCyclesDropped).toBe(0);
+  });
+
+  it('emits parents before their children', () => {
+    const graph = assembleKnowledgeGraph(
+      [],
+      [
+        knowledge('k2', 'bbb', null, [], 'k1'),
+        knowledge('k1', 'aaa'),
+        knowledge('k3', 'ccc', null, [], 'k2'),
+      ],
+      OPTS
+    );
+    const order = graph.nodes.filter((n) => n.tier === 'knowledge').map((n) => n.id);
+
+    expect(order).toEqual(['kn:k1', 'kn:k2', 'kn:k3']);
+  });
+
+  it('emits a payload that satisfies the published contract', () => {
+    const graph = assembleKnowledgeGraph(
+      [type('t', 'Alpha')],
+      [knowledge('k1', 'aaa', 't'), knowledge('k2', 'bbb', 't', [], 'k1')],
+      OPTS
+    );
+
+    expect(() =>
+      getKnowledgeGraphVoSchema.parse({
+        version: KNOWLEDGE_GRAPH_VERSION,
+        etag: '"test-etag"',
+        ...graph,
+      })
+    ).not.toThrow();
   });
 });
 

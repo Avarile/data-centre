@@ -10,8 +10,10 @@ import {
 import type { IVector3 } from './graphTheme';
 import {
   chargeFor,
+  CHARGE_DISTANCE_MAX,
   colorForNode,
   CORE_COLOR,
+  KNOWLEDGE_NODE_VAL,
   linkDistanceFor,
   linkStrengthFor,
   nodeValFor,
@@ -21,13 +23,14 @@ import {
 
 const TYPE_KNOWLEDGE = 'type-knowledge' as const;
 const KNOWLEDGE_KNOWLEDGE = 'knowledge-knowledge' as const;
+const KNOWLEDGE_PARENT = 'knowledge-parent' as const;
 /** Stands in for a tier the code has never heard of — the NaN-position guard. */
 const UNKNOWN_TIER = 'not-a-tier';
 /** sonarjs/no-duplicate-string: this etag literal is reused across nesting fixtures. */
-const TEST_ETAG = '"kg2-test"';
+const TEST_ETAG = '"kg3-test"';
 
 const graph: IGetKnowledgeGraphVo = {
-  version: 2,
+  version: 3,
   etag: TEST_ETAG,
   nodes: [
     {
@@ -96,6 +99,8 @@ const graph: IGetKnowledgeGraphVo = {
     truncated: { nodes: false, links: false },
     cyclesDropped: 0,
     maxDepth: 0,
+    maxKnowledgeDepth: 0,
+    knowledgeCyclesDropped: 0,
     relationCount: 0,
     danglingRelations: 0,
   },
@@ -184,6 +189,34 @@ describe('hidden subtree closure', () => {
 
   it('is empty when nothing is hidden', () => {
     expect(hiddenClosure(nodes, [])).toEqual(new Set());
+  });
+
+  it('cascades through nested knowledge, not just types', () => {
+    // The v2 closure gated on tier === 'type', so kn:2 — whose parent is a
+    // KNOWLEDGE, not a type — survived hiding type:a and rendered as an
+    // edgeless node floating in the scene.
+    const nested = [
+      { id: 'core', tier: 'core', parentId: null },
+      { id: 'type:a', tier: 'type', parentId: 'core' },
+      { id: 'kn:1', tier: 'knowledge', parentId: 'type:a' },
+      { id: 'kn:2', tier: 'knowledge', parentId: 'kn:1' },
+      { id: 'kn:3', tier: 'knowledge', parentId: 'kn:2' },
+      { id: 'type:z', tier: 'type', parentId: 'core' },
+      { id: 'kn:9', tier: 'knowledge', parentId: 'type:z' },
+    ] as unknown as IKnowledgeGraphNode[];
+
+    expect(hiddenClosure(nested, ['type:a'])).toEqual(new Set(['type:a', 'kn:1', 'kn:2', 'kn:3']));
+  });
+
+  it('hides a knowledge subtree without touching its type', () => {
+    const nested = [
+      { id: 'core', tier: 'core', parentId: null },
+      { id: 'type:a', tier: 'type', parentId: 'core' },
+      { id: 'kn:1', tier: 'knowledge', parentId: 'type:a' },
+      { id: 'kn:2', tier: 'knowledge', parentId: 'kn:1' },
+    ] as unknown as IKnowledgeGraphNode[];
+
+    expect(hiddenClosure(nested, ['kn:1'])).toEqual(new Set(['kn:1', 'kn:2']));
   });
 });
 
@@ -307,6 +340,52 @@ describe('buildSimulationGraph with nesting', () => {
     expect(buildSimulationGraph(graph, []).links).toHaveLength(1);
     expect(buildSimulationGraph(graph, ['type:b']).links).toHaveLength(0);
   });
+
+  it('drops a nested knowledge and its edge when its ancestor type is hidden', () => {
+    const graph = {
+      version: 3,
+      etag: TEST_ETAG,
+      nodes: [
+        { id: 'core', recordId: null, tier: 'core', label: 'core', parentId: null },
+        { id: 'type:a', recordId: 'a', tier: 'type', label: 'A', parentId: 'core' },
+        { id: 'kn:1', recordId: '1', tier: 'knowledge', label: 'k1', parentId: 'type:a' },
+        { id: 'kn:2', recordId: '2', tier: 'knowledge', label: 'k2', parentId: 'kn:1' },
+      ],
+      links: [
+        { source: 'type:a', target: 'kn:1', tier: TYPE_KNOWLEDGE, value: 1, distance: 70 },
+        { source: 'kn:1', target: 'kn:2', tier: KNOWLEDGE_PARENT, value: 1, distance: 50 },
+      ],
+      stats: {} as never,
+    } as unknown as IGetKnowledgeGraphVo;
+
+    // The regression this guards: kn:2 used to survive (its parent is a kn: id,
+    // which the type-only closure never held), then lose both its edges to the
+    // endpoint filter and float in the scene with nothing attached.
+    const result = buildSimulationGraph(graph, ['type:a']);
+    expect(result.nodes.map((n) => n.id)).toEqual(['core']);
+    expect(result.links).toHaveLength(0);
+  });
+
+  it('keeps a nested knowledge attached when nothing is hidden', () => {
+    const graph = {
+      version: 3,
+      etag: TEST_ETAG,
+      nodes: [
+        { id: 'core', recordId: null, tier: 'core', label: 'core', parentId: null },
+        { id: 'type:a', recordId: 'a', tier: 'type', label: 'A', parentId: 'core' },
+        { id: 'kn:1', recordId: '1', tier: 'knowledge', label: 'k1', parentId: 'type:a' },
+        { id: 'kn:2', recordId: '2', tier: 'knowledge', label: 'k2', parentId: 'kn:1' },
+      ],
+      links: [{ source: 'kn:1', target: 'kn:2', tier: KNOWLEDGE_PARENT, value: 1, distance: 50 }],
+      stats: {} as never,
+    } as unknown as IGetKnowledgeGraphVo;
+
+    const result = buildSimulationGraph(graph, []);
+    expect(result.nodes).toHaveLength(4);
+    // A knowledge-parent edge is drawn, unlike core-type which is simulated
+    // but never rendered.
+    expect(result.links.filter(isLinkVisible)).toHaveLength(1);
+  });
 });
 
 describe('linkEndpointId', () => {
@@ -322,12 +401,16 @@ describe('nodeValFor', () => {
   const radius = (val: number) => Math.cbrt(val);
 
   it('keeps the tier hierarchy at every degree, including childless types', () => {
-    const knowledge = radius(nodeValFor('knowledge', 1));
     const core = radius(nodeValFor('core', 25));
 
-    for (const degree of [0, 1, 5, 6, 7, 25, 40, 500]) {
-      const type = radius(nodeValFor('type', degree));
-      expect(type).toBeGreaterThan(knowledge);
+    // Both tiers swept, not just types: knowledge nodes grow with degree since
+    // v3, so the invariant is now "the largest knowledge stays under the
+    // smallest type" rather than "a fixed leaf stays under every type".
+    for (const typeDegree of [0, 1, 5, 6, 7, 25, 40, 500]) {
+      const type = radius(nodeValFor('type', typeDegree));
+      for (const knowledgeDegree of [0, 1, 2, 5, 13, 40, 500]) {
+        expect(type).toBeGreaterThan(radius(nodeValFor('knowledge', knowledgeDegree)));
+      }
       expect(type).toBeLessThan(core);
     }
   });
@@ -337,10 +420,19 @@ describe('nodeValFor', () => {
     expect(nodeValFor('type', 500)).toBe(nodeValFor('type', 40));
   });
 
+  it('grows a parent knowledge with its children, leaving leaves untouched', () => {
+    // A leaf carries exactly one structural edge, so degree 1 must stay at the
+    // pre-v3 constant — otherwise every node in the scene changes size.
+    expect(nodeValFor('knowledge', 1)).toBe(KNOWLEDGE_NODE_VAL);
+    expect(nodeValFor('knowledge', 0)).toBe(KNOWLEDGE_NODE_VAL);
+    expect(nodeValFor('knowledge', 4)).toBeGreaterThan(nodeValFor('knowledge', 1));
+    expect(nodeValFor('knowledge', 500)).toBe(nodeValFor('knowledge', 13));
+  });
+
   it('falls back to the leaf size for an unknown tier', () => {
     // An unknown tier returning undefined would make d3 produce NaN positions
     // and render an empty scene with no error at all.
-    expect(nodeValFor(UNKNOWN_TIER, 3)).toBe(nodeValFor('knowledge', 3));
+    expect(nodeValFor(UNKNOWN_TIER, 3)).toBe(nodeValFor('knowledge', 1));
   });
 });
 
@@ -374,6 +466,32 @@ describe('force tiers for v2 links', () => {
   it('still falls back for an unknown tier', () => {
     expect(Number.isFinite(linkStrengthFor(UNKNOWN_TIER))).toBe(true);
     expect(Number.isFinite(linkDistanceFor(UNKNOWN_TIER))).toBe(true);
+  });
+});
+
+describe('force tiers for nested knowledge', () => {
+  it('binds a nested knowledge tighter than a type binds its own leaves', () => {
+    // Both halves matter: shorter AND stiffer, so a nested group reads as a
+    // sub-lobe inside its cluster rather than as more leaves of the type.
+    expect(linkDistanceFor(KNOWLEDGE_PARENT)).toBeLessThan(linkDistanceFor(TYPE_KNOWLEDGE));
+    expect(linkStrengthFor(KNOWLEDGE_PARENT)).toBeGreaterThan(linkStrengthFor(TYPE_KNOWLEDGE));
+  });
+
+  it('resolves from the table rather than the unknown-tier fallback', () => {
+    // The `??` fallbacks are deliberately forgiving, so a tier missing from
+    // LINK_DISTANCE/LINK_STRENGTH degrades silently to a neutral edge instead
+    // of failing. This is what would catch that.
+    expect(linkDistanceFor(KNOWLEDGE_PARENT)).not.toBe(linkDistanceFor(UNKNOWN_TIER));
+    expect(linkStrengthFor(KNOWLEDGE_PARENT)).not.toBe(linkStrengthFor(UNKNOWN_TIER));
+  });
+
+  it('keeps the nesting edge inside the charge cap that bounds a cluster', () => {
+    // CHARGE_DISTANCE_MAX must stay above the cluster radius or neighbouring
+    // clusters interpenetrate. Nesting grows that radius, so the two are
+    // coupled — see the note on CHARGE_DISTANCE_MAX.
+    expect(linkDistanceFor(TYPE_KNOWLEDGE) + linkDistanceFor(KNOWLEDGE_PARENT)).toBeLessThan(
+      CHARGE_DISTANCE_MAX
+    );
   });
 });
 

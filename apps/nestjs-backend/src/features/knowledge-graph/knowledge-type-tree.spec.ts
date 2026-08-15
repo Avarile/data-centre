@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/naming-convention */
-import { TYPE_NODE_PREFIX } from '@teable/openapi';
-import type { IKnowledgeTypeRow } from './knowledge-graph.assembler';
+import { KNOWLEDGE_NODE_PREFIX, TYPE_NODE_PREFIX } from '@teable/openapi';
+import type { IKnowledgeRow, IKnowledgeTypeRow } from './knowledge-graph.assembler';
 import { assembleKnowledgeGraph, byTitleThenId } from './knowledge-graph.assembler';
 import { breakCycles, resolveHierarchy, orderDepthFirst } from './knowledge-type-tree';
 
@@ -9,6 +9,13 @@ const type = (
   title: string,
   parentRecordId: string | null = null
 ): IKnowledgeTypeRow => ({ recordId, title, parentRecordId });
+
+const knowledge = (
+  recordId: string,
+  title: string,
+  typeRecordId: string | null = null,
+  parentRecordId: string | null = null
+): IKnowledgeRow => ({ recordId, title, typeRecordId, parentRecordId, relatedRecordIds: [] });
 
 const OPTS = { maxKnowledgeNodes: 100, maxLinks: 100, coreLabel: 'core', unclassifiedLabel: 'un' };
 
@@ -137,5 +144,90 @@ describe('graph/detail parent agreement (F3 regression)', () => {
     expect(detailParent).toBeNull();
     expect(graphParent).toBe('core');
     expect(graphParent).not.toBe('type:a');
+  });
+});
+
+/**
+ * The same invariant, one tier down. `getNode` now walks a SECOND hierarchy
+ * (`knowledge_parent`), which can disagree with the assembler in exactly the
+ * way the type chain used to — so it gets the same guard rather than the
+ * assumption that the first fix generalises for free.
+ *
+ * This replicates `KnowledgeGraphService#knowledgeAncestors`: same rows, same
+ * sort, same breakCycles, and the same "the type branch hangs off the ROOT of
+ * the knowledge chain" anchor rule.
+ */
+const knowledgeParentLikeGetNode = (
+  knowledges: IKnowledgeRow[],
+  types: IKnowledgeTypeRow[]
+): ((recordId: string) => string | null) => {
+  const knowledgeById = new Map(knowledges.map((k) => [k.recordId, k]));
+  const { parentOf } = breakCycles([...knowledges].sort(byTitleThenId));
+  const { parentOf: typeParentOf } = breakCycles([...types].sort(byTitleThenId));
+  const typeById = new Map(types.map((t) => [t.recordId, t]));
+
+  return (recordId: string) => {
+    const chain: string[] = [];
+    const seen = new Set<string>();
+    let current = parentOf.get(recordId) ?? null;
+    while (current && !seen.has(current)) {
+      seen.add(current);
+      const row = knowledgeById.get(current);
+      if (!row) break;
+      chain.unshift(`${KNOWLEDGE_NODE_PREFIX}${row.recordId}`);
+      current = parentOf.get(current) ?? null;
+    }
+    if (chain.length > 0) {
+      return chain[chain.length - 1];
+    }
+    // Root of its chain: the parent is its own type bucket. Walk the type
+    // chain the same way and take the nearest ancestor.
+    const typeChain: string[] = [];
+    let type = knowledgeById.get(recordId)?.typeRecordId ?? null;
+    const typeSeen = new Set<string>();
+    while (type && !typeSeen.has(type)) {
+      typeSeen.add(type);
+      const row = typeById.get(type);
+      if (!row) break;
+      typeChain.unshift(`${TYPE_NODE_PREFIX}${row.recordId}`);
+      type = typeParentOf.get(type) ?? null;
+    }
+    return typeChain[typeChain.length - 1] ?? null;
+  };
+};
+
+describe('graph/detail knowledge parent agreement', () => {
+  it('reports the same parent for both knowledges in a two-cycle', () => {
+    const types = [type('t', 'Type')];
+    const knowledges = [knowledge('k1', 'Alpha', 't', 'k2'), knowledge('k2', 'Beta', 't', 'k1')];
+
+    const graph = assembleKnowledgeGraph(types, knowledges, OPTS);
+    const graphParentOf = (recordId: string) =>
+      graph.nodes.find((n) => n.id === `${KNOWLEDGE_NODE_PREFIX}${recordId}`)?.parentId ?? null;
+    const detailParentOf = knowledgeParentLikeGetNode(knowledges, types);
+
+    for (const recordId of ['k1', 'k2']) {
+      expect(detailParentOf(recordId)).toBe(graphParentOf(recordId));
+    }
+
+    // Pin the concrete values, so this fails loudly rather than vacuously if
+    // breakCycles' tie-break ever changes: Alpha sorts first, so its own
+    // back-edge is cut and it falls back to its type bucket.
+    expect(graphParentOf('k1')).toBe('type:t');
+    expect(graphParentOf('k2')).toBe('kn:k1');
+  });
+
+  it('anchors a nested knowledge on its ROOT ancestor type, not its own', () => {
+    const types = [type('t1', 'Alpha'), type('t2', 'Beta')];
+    // k2 is filed under Beta but nested under k1, which is rooted in Alpha.
+    const knowledges = [knowledge('k1', 'aaa', 't1'), knowledge('k2', 'bbb', 't2', 'k1')];
+
+    const graph = assembleKnowledgeGraph(types, knowledges, OPTS);
+    const detailParentOf = knowledgeParentLikeGetNode(knowledges, types);
+
+    expect(detailParentOf('k2')).toBe('kn:k1');
+    expect(graph.nodes.find((n) => n.id === 'kn:k2')?.parentId).toBe('kn:k1');
+    // And both layers agree the branch is Alpha's, not Beta's.
+    expect(graph.nodes.find((n) => n.id === 'kn:k2')?.rootTypeId).toBe('type:t1');
   });
 });

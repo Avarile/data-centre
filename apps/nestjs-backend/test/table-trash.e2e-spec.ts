@@ -552,5 +552,70 @@ describe('Trash (e2e)', () => {
 
       expect(resetedResult.data.trashItems.length).toEqual(0);
     });
+
+    it('should drop dependency references when resetting hard-deletes a field', async () => {
+      const fields = await getFields(tableId);
+      const sourceField = fields.find((f) => f.isPrimary)!;
+      const formulaField = await createField(tableId, {
+        name: 'reference holder',
+        type: FieldType.Formula,
+        options: { expression: `{${sourceField.id}}` },
+      });
+
+      await awaitWithFieldDeleteSync(async () => deleteFields(tableId, [formulaField.id]));
+      await waitForTableTrashItems(tableId, 1);
+
+      // Soft deletion already clears this field's edges, so re-seed one to assert the
+      // reset owns the invariant independently: whatever hard-deletes a `field` row is
+      // responsible for its `reference` rows. A survivor points at an id that resolves
+      // to nothing and breaks every reference-graph walk that reaches it.
+      await prisma.reference.create({
+        data: {
+          id: `ref-reset-${Date.now()}`,
+          fromFieldId: sourceField.id,
+          toFieldId: formulaField.id,
+        },
+      });
+
+      await resetTrashItems({ resourceType: TrashType.Table, resourceId: tableId });
+
+      expect(await prisma.field.count({ where: { id: formulaField.id } })).toEqual(0);
+      expect(
+        await prisma.reference.count({
+          where: {
+            OR: [{ fromFieldId: formulaField.id }, { toFieldId: formulaField.id }],
+          },
+        })
+      ).toEqual(0);
+    });
+  });
+
+  describe('Permanently deleting a table', () => {
+    it('should drop dependency references for every field type it hard-deletes', async () => {
+      const tableId = (await createTable(baseId, tableVo)).id;
+      const fields = await getFields(tableId);
+      const sourceField = fields.find((f) => f.isPrimary)!;
+      const formulaField = await createField(tableId, {
+        name: 'reference holder',
+        type: FieldType.Formula,
+        options: { expression: `{${sourceField.id}}` },
+      });
+      const fieldIds = [sourceField.id, formulaField.id];
+
+      expect(
+        await prisma.reference.count({ where: { toFieldId: formulaField.id } })
+      ).toBeGreaterThan(0);
+
+      await permanentDeleteTable(baseId, tableId);
+
+      expect(await prisma.field.count({ where: { id: { in: fieldIds } } })).toEqual(0);
+      expect(
+        await prisma.reference.count({
+          where: {
+            OR: [{ fromFieldId: { in: fieldIds } }, { toFieldId: { in: fieldIds } }],
+          },
+        })
+      ).toEqual(0);
+    });
   });
 });

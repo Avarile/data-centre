@@ -1030,6 +1030,15 @@ export class TrashService {
         },
       });
 
+      // Fields are hard-deleted above, so their dependency edges have to go with them.
+      // A surviving edge points at a field id that resolves to nothing, which breaks
+      // every reference-graph walk that reaches it (e.g. the field plan endpoints).
+      await prisma.reference.deleteMany({
+        where: {
+          OR: [{ fromFieldId: { in: deletedFieldIds } }, { toFieldId: { in: deletedFieldIds } }],
+        },
+      });
+
       await prisma.ops.deleteMany({
         where: {
           collection: tableId,

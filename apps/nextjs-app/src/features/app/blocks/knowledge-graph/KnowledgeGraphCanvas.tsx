@@ -6,7 +6,7 @@ import ForceGraph3D from 'react-force-graph-3d';
 import type { Camera } from 'three';
 import SpriteText from 'three-spritetext';
 import type { ISimulationGraph, ISimulationNode } from './utils/buildSimulationGraph';
-import { isLinkVisible, isNodeVisible } from './utils/buildSimulationGraph';
+import { isLinkVisible, isNodeVisible, linkEndpointId } from './utils/buildSimulationGraph';
 import {
   chargeFor,
   CHARGE_DISTANCE_MAX,
@@ -92,16 +92,12 @@ interface IKnowledgeGraphCanvasProps {
 const LABELLED_TIERS = new Set(['core', 'type']);
 
 /**
- * Always-on labels for `core` and `type` only. Each SpriteText allocates a
- * canvas-backed texture plus a material and adds a draw call, so labelling every
- * node at the 2000-node budget means 2000 textures and 2000 extra draw calls.
- * Core + types is bounded at roughly 1 + 50, which is free — and it is also the
- * right information design: the taxonomy is what is worth reading at rest.
- *
- * Gated on visibility so a hidden tier never allocates a texture it cannot
- * show, and so the two policies cannot drift apart.
+ * Labels sit closer to a knowledge than to a type, and closer again than to the
+ * core, because the node they annotate is that much smaller — a leaf renders at
+ * roughly 1.34 world units against a type's ~2.3 and the core's (undrawn) 8.
  */
-const shouldLabel = (node: ISimulationNode) => isNodeVisible(node) && LABELLED_TIERS.has(node.tier);
+const LABEL_OFFSET: Record<string, number> = { core: 24, type: 10, knowledge: 5 };
+const DEFAULT_LABEL_OFFSET = 10;
 
 const disposeSprites = (map: Map<string, SpriteText>) => {
   map.forEach((sprite) => {
@@ -130,6 +126,46 @@ export const KnowledgeGraphCanvas = forwardRef<
     undefined
   );
   const spriteMapRef = useRef(new Map<string, SpriteText>());
+
+  /**
+   * Knowledge nodes that other knowledges nest under.
+   *
+   * Derived from the links rather than read off the node: `degree` also counts
+   * peer relations, so it cannot answer "does this have children" on its own,
+   * and a dedicated payload field would be paid for on all 2000 nodes to
+   * describe the few that have any. This also gives `linkEndpointId` its first
+   * production caller — the endpoints are strings on a freshly built graph but
+   * node objects once the simulation has ticked, and this memo can be read in
+   * either state.
+   */
+  const parentKnowledgeIds = useMemo(
+    () =>
+      new Set(
+        graph.links
+          .filter((link) => link.tier === 'knowledge-parent')
+          .map((link) => linkEndpointId(link.source))
+      ),
+    [graph]
+  );
+
+  /**
+   * Always-on labels for `core`, `type`, and any knowledge with children. Each
+   * SpriteText allocates a canvas-backed texture plus a material and adds a
+   * draw call, so labelling every node at the 2000-node budget would mean 2000
+   * textures and 2000 extra draw calls. Core + types is bounded at roughly
+   * 1 + 50; parent knowledges add only the interior nodes of the nesting tree,
+   * which is bounded by how much nesting actually exists — and an unlabelled
+   * parent is exactly the node whose label carries the most meaning, since it
+   * names a group rather than a leaf.
+   *
+   * Gated on visibility so a hidden tier never allocates a texture it cannot
+   * show, and so the two policies cannot drift apart.
+   */
+  const shouldLabel = useCallback(
+    (node: ISimulationNode) =>
+      isNodeVisible(node) && (LABELLED_TIERS.has(node.tier) || parentKnowledgeIds.has(node.id)),
+    [parentKnowledgeIds]
+  );
 
   // The core is in the simulation but never drawn, so its coordinates are the
   // only handle on where the scene's centre actually drifted to. Falling back to
@@ -201,25 +237,28 @@ export const KnowledgeGraphCanvas = forwardRef<
         map.delete(id);
       }
     });
-  }, [graph]);
+  }, [graph, shouldLabel]);
 
-  const nodeThreeObject = useCallback((node: ISimulationNode) => {
-    const map = spriteMapRef.current;
-    if (!shouldLabel(node)) {
-      // With nodeThreeObjectExtend, a falsy return leaves the node as the
-      // default sphere and adds nothing — no texture, no extra draw call.
-      return undefined as unknown as SpriteText;
-    }
-    const cached = map.get(node.id);
-    if (cached) {
-      return cached;
-    }
-    const sprite = new SpriteText(node.label, LABEL_HEIGHT, colorForNode(node));
-    sprite.fontWeight = '600';
-    sprite.position.set(0, node.tier === 'core' ? 24 : 10, 0);
-    map.set(node.id, sprite);
-    return sprite;
-  }, []);
+  const nodeThreeObject = useCallback(
+    (node: ISimulationNode) => {
+      const map = spriteMapRef.current;
+      if (!shouldLabel(node)) {
+        // With nodeThreeObjectExtend, a falsy return leaves the node as the
+        // default sphere and adds nothing — no texture, no extra draw call.
+        return undefined as unknown as SpriteText;
+      }
+      const cached = map.get(node.id);
+      if (cached) {
+        return cached;
+      }
+      const sprite = new SpriteText(node.label, LABEL_HEIGHT, colorForNode(node));
+      sprite.fontWeight = '600';
+      sprite.position.set(0, LABEL_OFFSET[node.tier] ?? DEFAULT_LABEL_OFFSET, 0);
+      map.set(node.id, sprite);
+      return sprite;
+    },
+    [shouldLabel]
+  );
 
   // Orbit about the world Y axis through the controls target, and let the
   // controls own lookAt and the up vector. Writing camera.position AND calling
