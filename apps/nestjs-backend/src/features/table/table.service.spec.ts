@@ -38,4 +38,50 @@ describe('TableService', () => {
     const dbTableName = service.generateValidName('');
     expect(dbTableName).toBe('unnamed');
   });
+
+  describe('cleanupCreatedDataTable', () => {
+    const dropSql = 'DROP TABLE IF EXISTS "bse1"."tbl1" CASCADE';
+
+    const createHarness = (inTransaction: boolean) => {
+      const executeRawUnsafe = vi.fn().mockResolvedValue(1);
+      const logger = { error: vi.fn(), debug: vi.fn() };
+      const txClient = { $executeRawUnsafe: executeRawUnsafe };
+      const dataPrismaService = {
+        $executeRawUnsafe: executeRawUnsafe,
+        // txClient() hands back the service itself only when nothing wraps the call in a
+        // transaction; inside one it returns a distinct transaction client.
+        txClient: () => (inTransaction ? txClient : dataPrismaService),
+      };
+
+      const target = Object.create(TableService.prototype);
+      Object.assign(target, {
+        logger,
+        dataPrismaService,
+        dbProvider: { dropTable: vi.fn().mockReturnValue(dropSql) },
+      });
+
+      return { target, executeRawUnsafe, logger };
+    };
+
+    it('leaves the drop to the rollback when it runs inside a transaction', async () => {
+      const { target, executeRawUnsafe, logger } = createHarness(true);
+
+      await target.cleanupCreatedDataTable('bse1.tbl1', new Error('schema does not exist'));
+
+      // Issuing it here could only raise 25P02 and would log an ERROR blaming cleanup for a
+      // failure it did not cause.
+      expect(executeRawUnsafe).not.toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('schema does not exist'));
+    });
+
+    it('still drops the table when no transaction will roll it back', async () => {
+      const { target, executeRawUnsafe, logger } = createHarness(false);
+
+      await target.cleanupCreatedDataTable('bse1.tbl1', new Error('boom'));
+
+      expect(executeRawUnsafe).toHaveBeenCalledWith(dropSql);
+      expect(logger.error).not.toHaveBeenCalled();
+    });
+  });
 });

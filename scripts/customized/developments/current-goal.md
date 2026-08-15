@@ -1,1 +1,3 @@
-claude --resume 314a1865-5e9d-4d6a-b7fd-c70dd4ecee90
+Goal:
+
+1. Based on 

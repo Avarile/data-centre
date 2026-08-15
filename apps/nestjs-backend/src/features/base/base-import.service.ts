@@ -154,14 +154,7 @@ export class BaseImportService {
     });
 
     try {
-      const sqlList = this.dbProvider.createSchema(base.id);
-      if (sqlList) {
-        for (const sql of sqlList) {
-          // Keep schema creation visible to the subsequent data-plane DDL/insert steps even when
-          // import structure creation is wrapped in an outer shared meta transaction.
-          await this.dataPrismaService.$executeRawUnsafe(sql);
-        }
-      }
+      await this.ensureBaseSchema(base.id);
 
       await this.prismaService.txClient().base.update({
         where: { id: base.id },
@@ -170,11 +163,38 @@ export class BaseImportService {
 
       return base;
     } catch (error) {
-      await this.prismaService.txClient().base.update({
-        where: { id: base.id },
-        data: { provisionState: ProvisionState.error },
-      });
+      // A failed schema DDL aborts the surrounding transaction when meta and data share a
+      // database, so this update would raise 25P02 and replace the real cause. The rollback
+      // removes the base row anyway, so treat the state marker as best-effort.
+      await this.prismaService
+        .txClient()
+        .base.update({
+          where: { id: base.id },
+          data: { provisionState: ProvisionState.error },
+        })
+        .catch(() => undefined);
       throw error;
+    }
+  }
+
+  /**
+   * Provision the base's physical schema, idempotently.
+   *
+   * Runs on txClient() so the DDL shares the caller's transaction: when meta and data live in one
+   * database that makes the schema visible to the table DDL that follows *and* rolls it back with
+   * the metadata on failure. Creating it on a separate connection instead commits immediately and
+   * survives a rollback, which is how base/table rows end up pointing at a schema that never
+   * existed — or, via the mirror bug in dropBase, at one that was dropped out from under them.
+   */
+  private async ensureBaseSchema(baseId: string) {
+    const sqlList = this.dbProvider.createSchema(baseId);
+    if (!sqlList) {
+      return;
+    }
+
+    const dataPrisma = this.dataPrismaService.txClient();
+    for (const sql of sqlList) {
+      await dataPrisma.$executeRawUnsafe(sql);
     }
   }
 
@@ -1928,7 +1948,7 @@ export class BaseImportService {
     // create base
     onProgress?.('creating_base', name);
     const newBase = baseId
-      ? await this.prismaService.base.findUniqueOrThrow({
+      ? await this.prismaService.txClient().base.findUniqueOrThrow({
           where: { id: baseId },
           select: {
             id: true,
@@ -1938,6 +1958,15 @@ export class BaseImportService {
           },
         })
       : await this.createBase(spaceId, name, icon || undefined);
+
+    // A reused base is only a metadata row — re-publishing a template targets the previous
+    // snapshot base, whose schema may be gone (see ensureBaseSchema). Provision it before any
+    // table DDL, or the first CREATE TABLE fails with 3F000 and the base can never be published
+    // again.
+    if (baseId) {
+      await this.ensureBaseSchema(newBase.id);
+    }
+
     this.logger.log(`base-duplicate-service: Duplicate base successfully`);
 
     // update base icon and name (skip when copying into an existing base)

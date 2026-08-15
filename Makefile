@@ -184,14 +184,16 @@ docker.images:
 	$(DOCKER_COMPOSE_ARGS) $(DOCKER_COMPOSE) $(COMPOSE_FILE_ARGS) images
 
 
+# `pnpm exec` resolves zx from node_modules/.bin. Calling `zx` bare relies on it
+# being on PATH, which make does not arrange (that is a pnpm run-script feature),
+# and the old `|| pnpm add -g zx` fallback needed a PNPM_HOME that is unset until
+# `pnpm setup` is sourced. Both failed with "zx: command not found".
 build.app:
-	@zx --version || pnpm add -g zx; \
-  	zx scripts/build-image.mjs --file=dockers/teable/Dockerfile \
+	@pnpm exec zx scripts/build-image.mjs --file=dockers/teable/Dockerfile \
 		  --tag=cybernetics:develop
 
 build.db-migrate:
-	@zx --version || pnpm add -g zx; \
-  	zx scripts/build-image.mjs --file=dockers/teable/Dockerfile.db-migrate \
+	@pnpm exec zx scripts/build-image.mjs --file=dockers/teable/Dockerfile.db-migrate \
 		  --tag=cybernetics-db-migrate:develop
 
 

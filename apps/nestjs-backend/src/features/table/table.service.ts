@@ -52,15 +52,27 @@ export class TableService implements IReadonlyAdapterService {
   }
 
   private async cleanupCreatedDataTable(dbTableName: string, reason: unknown) {
+    const dataPrisma = this.dataPrismaService.txClient();
+    // txClient() only returns the service itself when nothing wraps this call in a transaction.
+    const inTransaction = dataPrisma !== this.dataPrismaService;
+    const cause = reason instanceof Error ? reason.message : String(reason);
+
+    if (inTransaction) {
+      // The DDL was issued in this transaction, so the rollback drops the table for us — and the
+      // failure has already aborted the transaction, leaving 25P02 as the only possible outcome
+      // here. Attempting it anyway logged an ERROR naming cleanup as the problem on every failed
+      // table creation, which reads as the cause and is not.
+      this.logger.debug(
+        `Skipping cleanup of data table ${dbTableName}; transaction rollback will drop it. Cause: ${cause}`
+      );
+      return;
+    }
+
     try {
-      await this.dataPrismaService
-        .txClient()
-        .$executeRawUnsafe(this.dbProvider.dropTable(dbTableName));
+      await dataPrisma.$executeRawUnsafe(this.dbProvider.dropTable(dbTableName));
     } catch (cleanupError) {
       this.logger.error(
-        `Failed to clean up data table ${dbTableName} after table metadata provisioning error: ${
-          reason instanceof Error ? reason.message : String(reason)
-        }`,
+        `Failed to clean up data table ${dbTableName} after table metadata provisioning error: ${cause}`,
         cleanupError instanceof Error ? cleanupError.stack : undefined
       );
     }
@@ -165,14 +177,22 @@ export class TableService implements IReadonlyAdapterService {
         },
       });
     } catch (error) {
+      // Both compensations run on the client that just failed. When meta and data share a
+      // database they also share the transaction, which Postgres has already aborted, so each
+      // raises 25P02 — and an unguarded update would reject with that instead of the real cause,
+      // burying it. The rollback drops the table and the row for us, so both are best-effort and
+      // the original error is always what propagates.
       await this.cleanupCreatedDataTable(dbTableName, error);
-      await this.prismaService.txClient().tableMeta.update({
-        where: { id: tableMeta.id },
-        data: {
-          provisionState: ProvisionState.error,
-          lastModifiedBy: userId,
-        },
-      });
+      await this.prismaService
+        .txClient()
+        .tableMeta.update({
+          where: { id: tableMeta.id },
+          data: {
+            provisionState: ProvisionState.error,
+            lastModifiedBy: userId,
+          },
+        })
+        .catch(() => undefined);
       throw error;
     }
 

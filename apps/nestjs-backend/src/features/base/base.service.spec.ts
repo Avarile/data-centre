@@ -144,4 +144,29 @@ describe('BaseService', () => {
       expect(result.v2Status).toEqual({ useV2: true, reason: 'space_feature' });
     });
   });
+
+  describe('dropBase', () => {
+    it('drops the schema on the transaction client so a rollback restores it', async () => {
+      const dropSql = 'DROP SCHEMA IF EXISTS "bse1" CASCADE';
+      const txExecuteRawUnsafe = vi.fn().mockResolvedValue(1);
+      // The bare client autocommits on its own connection: a drop issued there is permanent even
+      // when the enclosing delete rolls back, stranding base/table_meta rows on a missing schema.
+      const bareExecuteRawUnsafe = vi.fn().mockResolvedValue(1);
+
+      const dropTarget = Object.create(BaseService.prototype);
+      Object.assign(dropTarget, {
+        dbProvider: { dropSchema: vi.fn().mockReturnValue(dropSql) },
+        dataPrismaService: {
+          txClient: () => ({ $executeRawUnsafe: txExecuteRawUnsafe }),
+          $executeRawUnsafe: bareExecuteRawUnsafe,
+        },
+        tableOpenApiService: { dropTables: vi.fn() },
+      });
+
+      await dropTarget.dropBase('bse1', ['tbl1']);
+
+      expect(txExecuteRawUnsafe).toHaveBeenCalledWith(dropSql);
+      expect(bareExecuteRawUnsafe).not.toHaveBeenCalled();
+    });
+  });
 });

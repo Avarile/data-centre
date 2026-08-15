@@ -32,9 +32,12 @@ export const TemplateMain = (props: ITemplateMainProps) => {
     categoryHeaderRender,
     className,
     templateListClassName,
-    disabledFeaturedToggle = true,
+    disabledFeaturedToggle = false,
   } = props;
-  const [isFeatured, setIsFeatured] = useState<boolean | undefined>(true);
+  // undefined means "no featured filter" — anything else hides every template an admin has not
+  // curated yet, which is all of them right after publishing. Note false is not a substitute: the
+  // API reads it as "not featured" and excludes the curated ones instead.
+  const [isFeatured, setIsFeatured] = useState<boolean | undefined>(undefined);
   return (
     <div
       className={cn('flex flex-1 overflow-hidden', className, {

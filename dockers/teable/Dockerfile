@@ -16,13 +16,20 @@ ENV HUSKY=0
 
 WORKDIR /workspace-install
 
-COPY --link package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+# .npmrc must land before `pnpm fetch`, otherwise the prefetch runs without the
+# pinned registry and without use-node-version=22.22.0 — so it populates the
+# store under the image's Node 22.18.0, and the install below then downloads a
+# second Node runtime outside this cached layer.
+COPY --link package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 
 RUN pnpm fetch
 
 COPY --link . .
 
-RUN pnpm install --prefer-offline --frozen-lockfile
+# CI=true suppresses pnpm's interactive "modules directories will be removed
+# and reinstalled from scratch. Proceed? (Y/n)" prompt, which has no TTY to
+# answer it during a build and would hang forever.
+RUN CI=true pnpm install --prefer-offline --frozen-lockfile
 RUN pnpm -F @teable/db-main-prisma prisma-generate --schema ./prisma/postgres/schema.prisma
 
 ###################################################################
@@ -75,7 +82,7 @@ RUN set -ex; \
         pnpm nuke:node_modules; \
         chmod +x ./scripts/post-build-cleanup.mjs; \
         zx ./scripts/post-build-cleanup.mjs; \
-        pnpm -F '!@teable/eslint-config-bases' --config.dedupe-peer-dependents=false install --prod --prefer-offline --frozen-lockfile; \
+        CI=true pnpm -F '!@teable/eslint-config-bases' --config.dedupe-peer-dependents=false install --prod --prefer-offline --frozen-lockfile; \
         pnpm -F @teable/db-main-prisma prisma-generate --schema ./prisma/postgres/schema.prisma
 
 RUN set -ex; \
@@ -95,9 +102,14 @@ FROM tianon/gosu:1.19 AS gosu
 FROM node:${NODE_VERSION}-bookworm-slim AS runner
 
 ENV PNPM_HOME="/pnpm"
+
+# Declared so `--build-arg NEXTJS_APP_PORT=...` actually takes effect. Without
+# the ARG the expansion below always collapsed to the 3000 default.
+ARG NEXTJS_APP_PORT=3000
+
 ENV TZ=UTC \
     NODE_ENV=production \
-    PORT=${NEXTJS_APP_PORT:-3000}\
+    PORT=${NEXTJS_APP_PORT} \
     NEXTJS_DIR=apps/nextjs-app \
     PATH="$PNPM_HOME/bin:$PATH"
 
@@ -163,7 +175,11 @@ COPY --from=post-builder --link --chown=1001:1001 /app/apps/nestjs-backend/stati
 COPY --from=post-builder --link --chown=1001:1001 /app/apps/mastra-ai/.mastra ./apps/mastra-ai/.mastra
 COPY --from=post-builder --link --chown=1001:1001 /app/apps/mastra-ai/node_modules ./apps/mastra-ai/node_modules
 
-COPY --chown=nodejs:nodejs scripts/start.sh ./scripts/start.sh
+# --chmod is explicit because COPY otherwise preserves the host file mode, and
+# start.sh is the ENTRYPOINT: a checkout that loses the exec bit (a stray chmod
+# sweep, a Windows clone, a tarball export) builds a perfectly good image that
+# then dies at startup with `exec: "scripts/start.sh": permission denied`.
+COPY --chown=nodejs:nodejs --chmod=0755 scripts/start.sh ./scripts/start.sh
 COPY --chown=nodejs:nodejs scripts/db-migrate.mjs ./scripts/db-migrate.mjs
 COPY --chown=nodejs:nodejs scripts/wait-for ./scripts/wait-for
 

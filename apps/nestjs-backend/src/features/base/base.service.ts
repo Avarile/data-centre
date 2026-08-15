@@ -636,7 +636,11 @@ export class BaseService {
   async dropBase(baseId: string, tableIds: string[]) {
     const sql = this.dbProvider.dropSchema(baseId);
     if (sql) {
-      return await this.dataPrismaService.$executeRawUnsafe(sql);
+      // Must run on txClient so the drop shares the caller's transaction. On a separate
+      // connection DROP SCHEMA CASCADE commits immediately and is not undone when the enclosing
+      // delete rolls back, leaving base/table_meta rows that point at a schema which no longer
+      // exists — every later write to that base then fails with 3F000.
+      return await this.dataPrismaService.txClient().$executeRawUnsafe(sql);
     }
     await this.tableOpenApiService.dropTables(tableIds);
   }

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getTemplateCategoryList } from '@teable/openapi';
 import { ReactQueryKeys } from '@teable/sdk/config';
 import { useIsMobile } from '@teable/sdk/hooks';
-import { cn } from '@teable/ui-lib/shadcn';
+import { cn, Label, Switch } from '@teable/ui-lib/shadcn';
 import { useTranslation } from 'next-i18next';
 import { useMemo } from 'react';
 import { CategoryMenuItem } from './CategoryMenuItem';
@@ -18,7 +18,14 @@ interface ICategoryMenuProps {
 }
 
 export const CategoryMenu = (props: ICategoryMenuProps) => {
-  const { currentCategoryId, onCategoryChange, className } = props;
+  const {
+    currentCategoryId,
+    onCategoryChange,
+    className,
+    isFeatured,
+    onFeaturedChange,
+    disabledFeaturedToggle,
+  } = props;
   const { t } = useTranslation('common');
   const { data: categoryListFromServer } = useQuery({
     queryKey: ReactQueryKeys.publishedTemplateCategoryList(),
@@ -31,7 +38,9 @@ export const CategoryMenu = (props: ICategoryMenuProps) => {
     return [
       {
         id: null,
-        name: t('settings.templateAdmin.category.menu.recommended'),
+        // "All", not "Recommended": this entry clears the category filter and no longer implies a
+        // featured-only list — curation is what the Featured toggle below controls.
+        name: t('settings.templateAdmin.category.menu.all'),
         order: -Infinity,
       },
       // Widen type so concat is valid (recommended + categories)
@@ -68,6 +77,26 @@ export const CategoryMenu = (props: ICategoryMenuProps) => {
               />
             ))}
           </div>
+        </div>
+      )}
+
+      {!disabledFeaturedToggle && (
+        <div
+          className={cn('flex shrink-0 items-center justify-between gap-2 px-2 pb-2', {
+            'pb-0 pl-0': isMobile,
+          })}
+        >
+          <Label htmlFor="template-featured-only" className="text-sm text-muted-foreground">
+            {t('settings.templateAdmin.header.featured')}
+          </Label>
+          <Switch
+            id="template-featured-only"
+            className="scale-90"
+            checked={isFeatured === true}
+            // Clearing the toggle must send undefined, not false: the API reads false as
+            // "not featured" and would hide the curated templates instead of showing everything.
+            onCheckedChange={(checked: boolean) => onFeaturedChange(checked ? true : undefined)}
+          />
         </div>
       )}
     </div>
