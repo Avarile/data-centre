@@ -31,6 +31,7 @@ import {
   FieldDependencyGraph,
   HybridWithOutboxStrategy,
   SyncInTransactionStrategy,
+  createPollingWorkerId,
   defaultComputedUpdateOutboxConfig,
   defaultFieldBackfillConfig,
   defaultHybridWithOutboxStrategyConfig,
@@ -223,6 +224,8 @@ export const registerV2TableRepositoryPostgresAdapter = (
   const pollingConfig: ComputedUpdatePollingConfig = {
     ...defaultPollingConfig,
     enabled: pollingEnabled,
+    // Per-container id: the pid-based default collides between containers.
+    workerId: createPollingWorkerId(),
     pollIntervalMs: dispatchMode === 'external' ? 500 : 1000,
     ...config.computedUpdate?.pollingConfig,
   };

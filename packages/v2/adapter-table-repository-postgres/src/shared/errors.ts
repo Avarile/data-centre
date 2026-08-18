@@ -22,6 +22,32 @@ export const describeError = (error: unknown): string => {
 };
 
 /**
+ * Messages emitted once the underlying driver/pool has been torn down.
+ *
+ * These are terminal: a destroyed `Kysely` instance or an ended `pg.Pool` can
+ * never accept another connection, so retrying is pure noise. Background
+ * pollers must shut themselves down instead of looping forever.
+ */
+const terminalDriverErrorMessages = [
+  'driver has already been destroyed',
+  'pool has ended',
+  'called end on pool more than once',
+  'cannot use a pool after calling end',
+  'client was closed and is not queryable',
+];
+
+/**
+ * Check whether an error means the database driver is permanently unusable.
+ *
+ * Unlike transient connection failures, there is no recovery path: the owning
+ * container has already been disposed.
+ */
+export const isTerminalDriverError = (error: unknown): boolean => {
+  const message = describeError(error).toLowerCase();
+  return terminalDriverErrorMessages.some((candidate) => message.includes(candidate));
+};
+
+/**
  * PostgreSQL error code for unique constraint violation.
  * @see https://www.postgresql.org/docs/current/errcodes-appendix.html
  */
