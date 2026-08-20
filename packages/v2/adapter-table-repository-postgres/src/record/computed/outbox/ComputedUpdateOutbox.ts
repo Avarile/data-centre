@@ -16,6 +16,7 @@ import { sql, type Kysely, type Transaction } from 'kysely';
 import { err, ok } from 'neverthrow';
 import type { Result } from 'neverthrow';
 
+import { isTerminalDriverError } from '../../../shared/errors';
 import { v2RecordRepositoryPostgresTokens } from '../../di/tokens';
 import type { DynamicDB } from '../../query-builder';
 import type { DirtyRecordStats } from '../ComputedFieldUpdater';
@@ -1656,6 +1657,21 @@ const runInTransaction = async <T>(
         await sleep(delayMs);
         continue;
       }
+      if (isTerminalDriverError(error)) {
+        // The owning container has been disposed — expected during shutdown, and
+        // the polling worker terminates itself on this error. Logging it at
+        // `error` with a stack makes a clean stop look like a crash. It stays out
+        // of `isRetryableTransactionError` above: there is nothing to retry.
+        options?.logger?.debug('computed:outbox:transaction_driver_destroyed', {
+          operation: options?.operation,
+          hasTransaction,
+          attempt,
+          ...options?.logContext,
+        });
+        lastUnexpectedError = error;
+        break;
+      }
+
       options?.logger?.error('computed:outbox:transaction_unexpected_error', {
         operation: options?.operation,
         hasTransaction,

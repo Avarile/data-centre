@@ -1,5 +1,5 @@
 import type { IParentBridgeMethods, IUIConfig } from '@teable/sdk';
-import { Spin } from '@teable/ui-lib';
+import { CyberneticsLoader } from '@teable/ui-lib';
 import { useTranslation } from 'next-i18next';
 import { useEnv } from '../hooks/useEnv';
 import { usePluginInstall } from '../hooks/usePluginInstall';
@@ -30,7 +30,7 @@ const ChartInner = (props: { parentBridgeMethods: IParentBridgeMethods; uiConfig
   if (isLoading || !pluginInstall) {
     return (
       <div className="flex size-full items-center justify-center">
-        <Spin />
+        <CyberneticsLoader />
       </div>
     );
   }

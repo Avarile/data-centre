@@ -28,7 +28,10 @@ const mocks = vi.hoisted(() => ({
   registerV2ImportServices: vi.fn(),
 }));
 
-vi.mock('@teable/v2-container-node', () => ({
+vi.mock('@teable/v2-container-node', async (importOriginal) => ({
+  // Only the factory is stubbed. `disposeV2NodePgContainer` stays real so the
+  // stop-before-destroy ordering it owns is exercised, not mocked away.
+  ...(await importOriginal<typeof import('@teable/v2-container-node')>()),
   createV2NodePgContainer: mocks.createV2NodePgContainer,
 }));
 
@@ -307,24 +310,28 @@ describe('V2ContainerService', () => {
     expect(registrar.registerProjections).not.toHaveBeenCalled();
   });
 
-  it('stops computed polling before destroying the shared V2 db driver', async () => {
+  const createTeardownContainer = (pollingConfig: { enabled?: boolean } = { enabled: true }) => {
     const stop = vi.fn().mockResolvedValue(undefined);
     const destroy = vi.fn().mockResolvedValue(undefined);
     const db = { destroy };
+    const registered = new Set<symbol>([
+      v2RecordRepositoryPostgresTokens.computedUpdatePollingConfig,
+      v2RecordRepositoryPostgresTokens.computedUpdatePollingService,
+      v2MetaDbTokens.db,
+      v2DataDbTokens.db,
+    ]);
+
     const container = {
-      isRegistered: vi.fn(
-        (token: symbol) =>
-          token === v2RecordRepositoryPostgresTokens.computedUpdatePollingConfig ||
-          token === v2RecordRepositoryPostgresTokens.computedUpdatePollingService
-      ),
+      isRegistered: vi.fn((token: symbol) => registered.has(token)),
       registerInstance: vi.fn(),
       resolve: vi.fn((token: symbol) => {
         if (token === v2RecordRepositoryPostgresTokens.computedUpdatePollingConfig) {
-          return { enabled: true };
+          return pollingConfig;
         }
         if (token === v2RecordRepositoryPostgresTokens.computedUpdatePollingService) {
           return { stop };
         }
+        // Meta and data resolve to the same instance, as they do when the DSNs match.
         if (token === v2MetaDbTokens.db || token === v2DataDbTokens.db) {
           return db;
         }
@@ -341,6 +348,11 @@ describe('V2ContainerService', () => {
       }),
     } as unknown as DependencyContainer;
 
+    return { container, stop, destroy };
+  };
+
+  it('stops computed polling before destroying the shared V2 db driver', async () => {
+    const { container, stop, destroy } = createTeardownContainer();
     mocks.createV2NodePgContainer.mockResolvedValue(container);
     const { service } = createService();
 
@@ -348,7 +360,52 @@ describe('V2ContainerService', () => {
     await service.onModuleDestroy();
 
     expect(stop).toHaveBeenCalledTimes(1);
+    // Destroyed once, not twice: the shared instance is deduped across tokens.
     expect(destroy).toHaveBeenCalledTimes(1);
     expect(stop.mock.invocationCallOrder[0]).toBeLessThan(destroy.mock.invocationCallOrder[0]);
+  });
+
+  it('stops the poller even when the polling config says it is disabled', async () => {
+    // A poller started by hand still owns a timer, so teardown must not be gated
+    // on the config flag.
+    const { container, stop, destroy } = createTeardownContainer({ enabled: false });
+    mocks.createV2NodePgContainer.mockResolvedValue(container);
+    const { service } = createService();
+
+    await service.getContainer();
+    await service.onModuleDestroy();
+
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(stop.mock.invocationCallOrder[0]).toBeLessThan(destroy.mock.invocationCallOrder[0]);
+  });
+
+  it('tears down a container whose initialization failed after it was built', async () => {
+    const { container, stop, destroy } = createTeardownContainer();
+    mocks.createV2NodePgContainer.mockResolvedValue(container);
+    // Fails after `createV2NodePgContainer` returned, so the container already
+    // owns a pool and an auto-started poller.
+    mocks.registerV2ShareDbRealtime.mockImplementationOnce(() => {
+      throw new Error('late boom');
+    });
+    const { service } = createService();
+
+    await expect(service.getContainer()).rejects.toThrow('late boom');
+    await service.onModuleDestroy();
+
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('is idempotent across repeated destroy hooks', async () => {
+    const { container, stop, destroy } = createTeardownContainer();
+    mocks.createV2NodePgContainer.mockResolvedValue(container);
+    const { service } = createService();
+
+    await service.getContainer();
+    await service.onModuleDestroy();
+    await service.onModuleDestroy();
+
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(destroy).toHaveBeenCalledTimes(1);
   });
 });

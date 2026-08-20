@@ -3,7 +3,7 @@ import { Plus } from '@teable/icons';
 import { getDashboard } from '@teable/openapi';
 import { ReactQueryKeys } from '@teable/sdk/config';
 import { useBaseId, useBasePermission } from '@teable/sdk/hooks';
-import { Spin } from '@teable/ui-lib/base';
+import { CyberneticsLoader } from '@teable/ui-lib/base';
 import { Button } from '@teable/ui-lib/shadcn';
 import { isEmpty } from 'lodash';
 import { useTranslation } from 'next-i18next';
@@ -24,7 +24,7 @@ export const DashboardMain = (props: { dashboardId: string }) => {
   if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <Spin />
+        <CyberneticsLoader />
       </div>
     );
   }

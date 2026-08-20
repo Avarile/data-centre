@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { HelpCircle } from '@teable/icons';
 import { decisionInfoGet } from '@teable/openapi';
 import { useSession } from '@teable/sdk/hooks';
-import { Spin } from '@teable/ui-lib/base';
+import { CyberneticsLoader } from '@teable/ui-lib/base';
 import { Button, Card, Separator, cn } from '@teable/ui-lib/shadcn';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
@@ -49,7 +49,11 @@ export const OAuthAppDecisionPage = () => {
   }
 
   if (!decisionInfo) {
-    return <Spin />;
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <CyberneticsLoader />
+      </div>
+    );
   }
 
   return (

@@ -1,5 +1,5 @@
 import type { IChildBridgeMethods } from '@teable/sdk/plugin-bridge';
-import { Spin } from '@teable/ui-lib/base';
+import { CyberneticsLoader } from '@teable/ui-lib/base';
 import { cn } from '@teable/ui-lib/shadcn';
 import { useTranslation } from 'next-i18next';
 import type { IframeHTMLAttributes } from 'react';
@@ -60,7 +60,7 @@ export const PluginContent = (props: IPluginContentProps) => {
         <>
           {!bridge && (
             <div className="flex size-full items-center justify-center">
-              <Spin />
+              <CyberneticsLoader />
             </div>
           )}
           <IframePluginRender

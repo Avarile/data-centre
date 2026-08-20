@@ -293,7 +293,10 @@ export class ComputedUpdatePollingService {
     this.running = false;
     this.clearPendingWork();
 
-    this.logger.error('computed:polling:terminated', {
+    // `warn`, not `error`: the only thing that terminates a loop is a driver that
+    // has been torn down, which is the expected outcome of shutting the process
+    // down. Reporting it as an error makes a clean stop look like a crash.
+    this.logger.warn('computed:polling:terminated', {
       workerId: this.config.workerId,
       reason,
       ...toErrorLogFields(error),
@@ -312,6 +315,9 @@ export class ComputedUpdatePollingService {
       this.pollTimer = null;
       this.currentPollPromise = this.poll();
     }, delayMs);
+    // A pending poll must never be the reason the process stays alive; without
+    // this the loop pins the event loop and shutdown has to be forced.
+    this.pollTimer.unref?.();
   }
 
   private scheduleImmediatePoll(): void {
@@ -339,6 +345,7 @@ export class ComputedUpdatePollingService {
 
       this.wakeBackoff = finish;
       this.backoffTimer = setTimeout(finish, ms);
+      this.backoffTimer.unref?.();
     });
   }
 

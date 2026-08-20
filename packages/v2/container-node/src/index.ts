@@ -13,8 +13,10 @@ import type { IV2PostgresStateAdapterConfig } from '@teable/v2-adapter-repositor
 import { registerV2PostgresStateAdapter } from '@teable/v2-adapter-repository-postgres';
 import {
   createTypeValidationStrategy,
+  isTerminalDriverError,
   registerV2TableRepositoryPostgresAdapter,
   startComputedUpdatePollingIfEnabled,
+  v2RecordRepositoryPostgresTokens,
   type IV2TableRepositoryPostgresConfig,
 } from '@teable/v2-adapter-table-repository-postgres';
 import { registerCommandExplainModule } from '@teable/v2-command-explain';
@@ -209,4 +211,51 @@ export const createV2NodePgContainer = async (
   const c = container.createChildContainer();
   await registerV2NodePgDependencies(c, options);
   return c;
+};
+
+/**
+ * Tear down a container created by `createV2NodePgContainer`.
+ *
+ * `registerV2NodePgDependencies` starts a background computed-update poller as a
+ * side effect, so a container that is merely dropped leaves a live `setTimeout`
+ * holding a `Kysely` instance. The poller must be stopped *before* the driver is
+ * destroyed — otherwise its next tick fails with `driver has already been
+ * destroyed`, which is exactly the shutdown noise this helper exists to prevent.
+ *
+ * Every consumer of `createV2NodePgContainer` must call this; the container
+ * cannot clean itself up, because tsyringe has no disposal semantics here.
+ *
+ * Idempotent and non-throwing: safe to call twice, and safe on a container that
+ * never registered the polling or db tokens.
+ */
+export const disposeV2NodePgContainer = async (c: DependencyContainer): Promise<void> => {
+  if (c.isRegistered(v2RecordRepositoryPostgresTokens.computedUpdatePollingService)) {
+    const pollingService = c.resolve<{ stop(): Promise<void> }>(
+      v2RecordRepositoryPostgresTokens.computedUpdatePollingService
+    );
+    // Deliberately not gated on `computedUpdatePollingConfig.enabled`: a poller
+    // started by hand on a disabled config still owns a timer, and skipping it
+    // would orphan that timer past the `destroy()` below.
+    await pollingService.stop();
+  }
+
+  // The same `Kysely` instance is registered under several tokens when the meta
+  // and data DSNs match, so dedupe before destroying.
+  const closers = new Set<{ destroy(): Promise<void> }>();
+  for (const token of [v2MetaDbTokens.db, v2DataDbTokens.db, v2PostgresDbTokens.db]) {
+    if (!c.isRegistered(token)) continue;
+    closers.add(c.resolve<{ destroy(): Promise<void> }>(token));
+  }
+
+  await Promise.all(
+    Array.from(closers, async (db) => {
+      try {
+        await db.destroy();
+      } catch (error) {
+        // A driver torn down by an earlier dispose is the expected outcome of a
+        // second call; anything else is a real failure and must surface.
+        if (!isTerminalDriverError(error)) throw error;
+      }
+    })
+  );
 };

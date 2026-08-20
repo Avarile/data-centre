@@ -2,6 +2,7 @@ import type { ILogger } from '@teable/v2-core';
 import type { Kysely } from 'kysely';
 import { describe, it, expect, vi } from 'vitest';
 
+import { isTerminalDriverError } from '../../../shared/errors';
 import { ComputedUpdateOutbox, dedupeClaimRowsByScope } from './ComputedUpdateOutbox';
 import type { ComputedUpdateOutboxItem } from './ComputedUpdateOutboxPayload';
 import {
@@ -392,6 +393,34 @@ describe('ComputedUpdateOutbox', () => {
       await outbox.claimBatch({ workerId: 'worker-1', limit: 10, now });
 
       expect(statuses).toEqual(['processing', 'pending']);
+    });
+
+    it('does not report a destroyed driver as an unexpected error', async () => {
+      const mockDb = {
+        transaction: () => ({
+          execute: async () => {
+            throw new Error('driver has already been destroyed');
+          },
+        }),
+      } as unknown as MockDb;
+
+      const logger = createLogger();
+      const outbox = new ComputedUpdateOutbox(mockDb, defaultComputedUpdateOutboxConfig, logger);
+
+      const result = await outbox.claimBatch({ workerId: 'worker-1', limit: 10 });
+
+      // The owning container has been disposed. The polling worker terminates on
+      // this, so a stack-carrying ERROR line here makes a clean shutdown read as
+      // a crash.
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(logger.debug).toHaveBeenCalledWith(
+        'computed:outbox:transaction_driver_destroyed',
+        expect.objectContaining({ operation: 'claim_batch', workerId: 'worker-1' })
+      );
+
+      // The worker classifies by message, so it must survive the DomainError wrap.
+      expect(result.isErr()).toBe(true);
+      expect(isTerminalDriverError(result._unsafeUnwrapErr())).toBe(true);
     });
 
     it('marks claimed tasks as processing', async () => {

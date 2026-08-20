@@ -155,11 +155,48 @@ describe('ComputedUpdatePollingService', () => {
     expect(service.isRunning()).toBe(false);
     // Nothing left holding the event loop open.
     expect(vi.getTimerCount()).toBe(0);
-    expect(logger.error).toHaveBeenCalledWith(
+    // A destroyed driver is how a clean shutdown looks from in here, so it must
+    // not be reported as an error.
+    expect(logger.warn).toHaveBeenCalledWith(
       'computed:polling:terminated',
       expect.objectContaining({ workerId: 'poll-destroyed', reason: 'driver_destroyed' })
     );
+    expect(logger.error).not.toHaveBeenCalled();
 
+    await service.stop();
+  });
+
+  it('unrefs the scheduled poll timer so a pending poll cannot pin the event loop', async () => {
+    vi.useFakeTimers();
+
+    // Wrap the (already faked) timer so the handle reports whether the service
+    // unref'd it. Without that, a pending poll keeps the process alive and
+    // shutdown has to be forced.
+    const fakeSetTimeout = globalThis.setTimeout;
+    const unref = vi.fn();
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((
+      handler: () => void,
+      ms?: number
+    ) => {
+      const handle = fakeSetTimeout(handler, ms) as unknown as { unref?: () => void };
+      handle.unref = unref;
+      return handle;
+    }) as typeof globalThis.setTimeout);
+
+    const worker = { runOnce: vi.fn().mockResolvedValue(ok(0)) };
+    const service = new ComputedUpdatePollingService(
+      worker as never,
+      { ...defaultPollingConfig, enabled: true, workerId: 'poll-unref', pollIntervalMs: 500 },
+      createLogger()
+    );
+
+    // One idle poll, which then schedules the next one via `setTimeout`.
+    await vi.advanceTimersByTimeAsync(1);
+    expect(worker.runOnce).toHaveBeenCalledTimes(1);
+    expect(setTimeoutSpy).toHaveBeenCalled();
+    expect(unref).toHaveBeenCalled();
+
+    setTimeoutSpy.mockRestore();
     await service.stop();
   });
 

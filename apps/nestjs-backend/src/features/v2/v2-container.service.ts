@@ -3,14 +3,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DiscoveryService, Reflector } from '@nestjs/core';
 import type { InstanceWrapper } from '@nestjs/core/injector/instance-wrapper';
-import { v2DataDbTokens, v2MetaDbTokens } from '@teable/v2-adapter-db-postgres-pg';
 import {
   ShareDbPubSubPublisher,
   registerV2ShareDbRealtime,
 } from '@teable/v2-adapter-realtime-sharedb';
-import { v2RecordRepositoryPostgresTokens } from '@teable/v2-adapter-table-repository-postgres';
 import { KeyvUndoRedoStore } from '@teable/v2-adapter-undo-redo-keyv';
-import { createV2NodePgContainer } from '@teable/v2-container-node';
+import { createV2NodePgContainer, disposeV2NodePgContainer } from '@teable/v2-container-node';
 import type { AttachmentValueDecoratorService, IAttachmentLookupService } from '@teable/v2-core';
 import { v2CoreTokens } from '@teable/v2-core';
 import type { DependencyContainer } from '@teable/v2-di';
@@ -36,6 +34,7 @@ import { OpenTelemetryTracer } from './v2-tracer.adapter';
 export class V2ContainerService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(V2ContainerService.name);
   private containerPromise?: Promise<DependencyContainer>;
+  private createdContainer?: DependencyContainer;
 
   constructor(
     private readonly configService: ConfigService,
@@ -88,6 +87,13 @@ export class V2ContainerService implements OnApplicationBootstrap, OnModuleDestr
       computedUpdate: computedUpdateMode === 'sync' ? { mode: 'sync' } : undefined,
       maxFreeRowLimit: this.configService.get<number>('MAX_FREE_ROW_LIMIT'),
     });
+
+    // Recorded before the registration work below, which can throw: the container
+    // already owns a connection pool and an auto-started computed-update poller,
+    // so it must be disposable even if this method never returns it. `getContainer`
+    // clears `containerPromise` on failure, and gating teardown on that promise
+    // would orphan the poller past the driver it holds.
+    this.createdContainer = container;
 
     registerV2ShareDbRealtime(container, {
       publisher: new ShareDbPubSubPublisher(this.shareDbService.pubsub),
@@ -166,38 +172,16 @@ export class V2ContainerService implements OnApplicationBootstrap, OnModuleDestr
   }
 
   async onModuleDestroy(): Promise<void> {
-    if (!this.containerPromise) return;
+    // Keyed off the container itself, not `containerPromise`: a `createContainer`
+    // that failed after the container was built clears the promise but leaves a
+    // live poller and connection pool behind.
+    const container = this.createdContainer;
+    if (!container) return;
 
-    const container = await this.containerPromise;
-    await this.stopComputedUpdatePolling(container);
-    const closers = Array.from(
-      new Set([
-        container.resolve<{ destroy(): Promise<void> }>(v2MetaDbTokens.db),
-        container.resolve<{ destroy(): Promise<void> }>(v2DataDbTokens.db),
-      ])
-    );
-    await Promise.all(closers.map((db) => db.destroy()));
-  }
+    this.createdContainer = undefined;
+    this.containerPromise = undefined;
 
-  private async stopComputedUpdatePolling(container: DependencyContainer): Promise<void> {
-    if (!container.isRegistered(v2RecordRepositoryPostgresTokens.computedUpdatePollingConfig)) {
-      return;
-    }
-
-    const pollingConfig = container.resolve<{ enabled?: boolean }>(
-      v2RecordRepositoryPostgresTokens.computedUpdatePollingConfig
-    );
-    if (!pollingConfig.enabled) {
-      return;
-    }
-
-    if (!container.isRegistered(v2RecordRepositoryPostgresTokens.computedUpdatePollingService)) {
-      return;
-    }
-
-    const pollingService = container.resolve<{ stop(): Promise<void> }>(
-      v2RecordRepositoryPostgresTokens.computedUpdatePollingService
-    );
-    await pollingService.stop();
+    // Stops the computed-update poller before destroying the driver it holds.
+    await disposeV2NodePgContainer(container);
   }
 }

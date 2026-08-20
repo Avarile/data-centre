@@ -9,9 +9,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
   Button,
+  CyberneticsLoader,
   Dialog,
   DialogContent,
-  Spin,
 } from '@teable/ui-lib';
 import { XIcon } from 'lucide-react';
 import { forwardRef, lazy, Suspense, useImperativeHandle, useRef, useState } from 'react';
@@ -105,7 +105,7 @@ export const WorkFlowPanelModal = () => {
           <Suspense
             fallback={
               <div className="flex size-full items-center justify-center">
-                <Spin />
+                <CyberneticsLoader />
               </div>
             }
           >
