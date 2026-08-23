@@ -131,7 +131,7 @@ export const QueryBuilder = () => {
             </TabsList>
 
             {/* API Builder Tab */}
-            <TabsContent value="api-builder" className="space-y-6">
+            <TabsContent value="api-builder">
               {tableId ? (
                 <>
                   <p className="text-sm text-muted-foreground">{t('developer:pickParams')}</p>

@@ -64,7 +64,11 @@ const TabsContent = React.forwardRef<
   <TabsPrimitive.Content
     ref={ref}
     className={cn(
-      'mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+      // Radix hides the inactive panel with the `hidden` attribute, but Tailwind's display
+      // utilities (`flex`, `grid`, ...) win over preflight's `[hidden] { display: none }` on
+      // source order, leaving an empty panel that still claims flex/grid space. The
+      // data-attribute variant is more specific, so it beats any display utility a call site adds.
+      'mt-2 data-[state=inactive]:hidden ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
       className
     )}
     {...props}

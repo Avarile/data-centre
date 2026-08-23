@@ -436,7 +436,7 @@ export const APIDialogContent = ({ onOpenChange: _onOpenChange }: APIDialogConte
                   )}
                 </Button>
               </div>
-              <ScrollArea className="h-full min-h-0 rounded-lg border bg-muted/20 p-4">
+              <ScrollArea className="min-h-0 flex-1 rounded-lg border bg-muted/20 p-4">
                 <MarkdownPreview>{aiContext}</MarkdownPreview>
               </ScrollArea>
             </div>
