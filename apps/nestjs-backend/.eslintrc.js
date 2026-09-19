@@ -42,5 +42,15 @@ module.exports = {
         '@typescript-eslint/consistent-type-imports': 'off',
       },
     },
+    {
+      // The MCP SDK is ESM-only and exposes its entry points through an
+      // `exports` map with explicit `.js` subpaths. tsc resolves these
+      // correctly (typecheck passes); eslint-import-resolver-typescript does
+      // not, so the rule reports false positives here only.
+      files: ['src/features/mcp/**/*.ts', 'test/mcp.e2e-spec.ts'],
+      rules: {
+        'import/no-unresolved': ['error', { ignore: ['^@modelcontextprotocol/sdk/'] }],
+      },
+    },
   ],
 };

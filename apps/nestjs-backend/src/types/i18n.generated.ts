@@ -3476,6 +3476,7 @@ export type I18nTranslations = {
         "personalAccessToken": string;
         "oauthApps": string;
         "plugins": string;
+        "mcp": string;
     };
     "share": {
         "auth": {
@@ -5362,6 +5363,52 @@ export type I18nTranslations = {
             "never": string;
             "map": string;
             "set": string;
+        };
+    };
+    "mcp": {
+        "title": string;
+        "description": string;
+        "endpoint": {
+            "title": string;
+            "description": string;
+            "copy": string;
+        };
+        "token": {
+            "title": string;
+            "description": string;
+            "create": string;
+            "manage": string;
+            "hint": string;
+        };
+        "catalogue": {
+            "title": string;
+            "description": string;
+            "requiredScopes": string;
+            "destructive": string;
+            "readOnly": string;
+            "writesDisabled": string;
+            "group": {
+                "discovery": string;
+                "record": string;
+                "schema": string;
+            };
+        };
+        "limits": {
+            "title": string;
+            "maxRecords": string;
+            "maxDelete": string;
+        };
+        "safety": {
+            "title": string;
+            "description": string;
+            "learnMore": string;
+        };
+        "connect": {
+            "title": string;
+            "claudeCode": string;
+            "json": string;
+            "copy": string;
+            "copied": string;
         };
     };
 };

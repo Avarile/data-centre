@@ -30,6 +30,7 @@ import { InvitationModule } from './features/invitation/invitation.module';
 import { KnowledgeGraphModule } from './features/knowledge-graph/knowledge-graph.module';
 import { MailSenderOpenApiModule } from './features/mail-sender/open-api/mail-sender-open-api.module';
 import { MailSenderMergeModule } from './features/mail-sender/open-api/mail-sender.merge.module';
+import { McpModule } from './features/mcp/mcp.module';
 import { NextModule } from './features/next/next.module';
 import { NotificationModule } from './features/notification/notification.module';
 import { OAuthModule } from './features/oauth/oauth.module';
@@ -110,6 +111,8 @@ export const appModules = {
     BuiltinAssetsInitModule,
     V2Module,
     KnowledgeGraphModule,
+    // MCP_ENABLED=false registers no MCP routes at all.
+    ...(process.env.MCP_ENABLED === 'false' ? [] : [McpModule]),
   ],
   providers: [InitBootstrapProvider],
 };

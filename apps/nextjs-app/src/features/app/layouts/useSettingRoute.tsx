@@ -1,4 +1,4 @@
-import { Code2, Key, Link } from '@teable/icons';
+import { Code2, Key, Link, Zap } from '@teable/icons';
 import { useRouter } from 'next/router';
 import { useTranslation } from 'next-i18next';
 import { useMemo } from 'react';
@@ -40,6 +40,19 @@ export const useSettingRoute = (): ISidebarContentRoute[] => {
         ),
         route: '/setting/oauth-app',
         pathTo: '/setting/oauth-app',
+      },
+      {
+        Icon: Zap,
+        label: (
+          <>
+            {t('setting:mcp')}
+            <span className="ml-1 h-5 rounded-sm border border-warning p-0.5 text-[11px] font-normal text-warning">
+              {t('common:noun.beta')}
+            </span>
+          </>
+        ),
+        route: '/setting/mcp',
+        pathTo: '/setting/mcp',
       },
       // {
       //   Icon: Code,

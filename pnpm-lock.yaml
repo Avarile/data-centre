@@ -178,6 +178,9 @@ importers:
       '@keyv/sqlite':
         specifier: 3.6.7
         version: 3.6.7
+      '@modelcontextprotocol/sdk':
+        specifier: 1.29.0
+        version: 1.29.0(zod@4.1.8)
       '@nestjs-modules/mailer':
         specifier: 1.11.2
         version: 1.11.2(@nestjs/common@10.3.5(class-transformer@0.5.1)(class-validator@0.14.1)(reflect-metadata@0.2.1)(rxjs@7.8.1))(@nestjs/core@10.3.5)(encoding@0.1.13)(nodemailer@6.9.13)
@@ -17044,10 +17047,6 @@ packages:
     resolution: {integrity: sha512-v0eOBUbiaFojBu2s2NPBfYUoRR9GjcDNvCXVaqEf5vVfpIAh9f8RCo4vXTP8c63QRKCFwoLpMpTdPwwhEKVgzA==}
     engines: {node: '>=14.18'}
 
-  eventsource-parser@3.0.6:
-    resolution: {integrity: sha512-Vo1ab+QXPzZ4tCa8SwIHJFaSzy4R6SHf7BY79rFBDf0idraZWAkYrDjDj8uWaSm3S2TK+hJ7/t1CEmZ7jXw+pg==}
-    engines: {node: '>=18.0.0'}
-
   eventsource-parser@3.0.8:
     resolution: {integrity: sha512-70QWGkr4snxr0OXLRWsFLeRBIRPuQOvt4s8QYjmUlmlkyTZkRqS7EDVRZtzU3TiyDbXSzaOeF0XUKy8PchzukQ==}
     engines: {node: '>=18.0.0'}
@@ -26221,7 +26220,7 @@ snapshots:
     dependencies:
       '@ai-sdk/provider': 3.0.8
       '@standard-schema/spec': 1.1.0
-      eventsource-parser: 3.0.6
+      eventsource-parser: 3.0.8
       zod: 4.1.8
 
   '@ai-sdk/provider-utils@4.0.24(zod@4.1.8)':
@@ -34762,7 +34761,7 @@ snapshots:
       '@storybook/core-events': 6.5.16
       core-js: 3.36.1
       global: 4.4.0
-      qs: 6.13.1
+      qs: 6.15.2
       telejson: 6.0.8
 
   '@storybook/channel-websocket@6.5.16':
@@ -34803,7 +34802,7 @@ snapshots:
       global: 4.4.0
       lodash: 4.17.21
       memoizerific: 1.11.3
-      qs: 6.13.1
+      qs: 6.15.2
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
       regenerator-runtime: 0.13.11
@@ -34828,7 +34827,7 @@ snapshots:
       '@storybook/theming': 6.5.16(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       core-js: 3.36.1
       memoizerific: 1.11.3
-      qs: 6.13.1
+      qs: 6.15.2
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
       regenerator-runtime: 0.13.11
@@ -35157,7 +35156,7 @@ snapshots:
       core-js: 3.36.1
       global: 4.4.0
       lodash: 4.17.21
-      qs: 6.13.1
+      qs: 6.15.2
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
       regenerator-runtime: 0.13.11
@@ -35209,7 +35208,7 @@ snapshots:
       '@storybook/client-logger': 6.5.16
       core-js: 3.36.1
       memoizerific: 1.11.3
-      qs: 6.13.1
+      qs: 6.15.2
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
       regenerator-runtime: 0.13.11
@@ -35218,7 +35217,7 @@ snapshots:
     dependencies:
       '@storybook/client-logger': 8.0.4
       memoizerific: 1.11.3
-      qs: 6.13.1
+      qs: 6.15.2
 
   '@storybook/semver@7.3.2':
     dependencies:
@@ -41048,7 +41047,7 @@ snapshots:
       '@typescript-eslint/parser': 7.3.1(eslint@8.57.0)(typescript@5.4.3)
       eslint: 8.57.0
       eslint-import-resolver-node: 0.3.9
-      eslint-import-resolver-typescript: 3.6.1(@typescript-eslint/parser@7.3.1(eslint@8.57.0)(typescript@5.4.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.32.0(@typescript-eslint/parser@7.3.1(eslint@8.57.0)(typescript@5.4.3))(eslint@8.57.0))(eslint@8.57.0)
+      eslint-import-resolver-typescript: 3.6.1(@typescript-eslint/parser@7.3.1(eslint@8.57.0)(typescript@5.4.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.32.0)(eslint@8.57.0)
       eslint-plugin-import: 2.32.0(@typescript-eslint/parser@7.3.1(eslint@8.57.0)(typescript@5.4.3))(eslint-import-resolver-typescript@3.6.1)(eslint@8.57.0)
       eslint-plugin-jsx-a11y: 6.10.2(eslint@8.57.0)
       eslint-plugin-react: 7.37.5(eslint@8.57.0)
@@ -41071,7 +41070,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-import-resolver-typescript@3.6.1(@typescript-eslint/parser@7.3.1(eslint@8.57.0)(typescript@5.4.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.32.0(@typescript-eslint/parser@7.3.1(eslint@8.57.0)(typescript@5.4.3))(eslint@8.57.0))(eslint@8.57.0):
+  eslint-import-resolver-typescript@3.6.1(@typescript-eslint/parser@7.3.1(eslint@8.57.0)(typescript@5.4.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.32.0)(eslint@8.57.0):
     dependencies:
       debug: 4.4.0
       enhanced-resolve: 5.17.1
@@ -41144,7 +41143,7 @@ snapshots:
       '@typescript-eslint/parser': 7.3.1(eslint@8.57.0)(typescript@5.4.3)
       eslint: 8.57.0
       eslint-import-resolver-node: 0.3.9
-      eslint-import-resolver-typescript: 3.6.1(@typescript-eslint/parser@7.3.1(eslint@8.57.0)(typescript@5.4.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.32.0(@typescript-eslint/parser@7.3.1(eslint@8.57.0)(typescript@5.4.3))(eslint@8.57.0))(eslint@8.57.0)
+      eslint-import-resolver-typescript: 3.6.1(@typescript-eslint/parser@7.3.1(eslint@8.57.0)(typescript@5.4.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.32.0)(eslint@8.57.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -41508,8 +41507,6 @@ snapshots:
   events@3.3.0: {}
 
   eventsource-parser@1.1.2: {}
-
-  eventsource-parser@3.0.6: {}
 
   eventsource-parser@3.0.8: {}
 

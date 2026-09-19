@@ -1,0 +1,46 @@
+{
+  "title": "MCP Server",
+  "description": "Connect an AI client such as Claude Code, Claude Desktop or Cursor to this workspace. The client can then read and edit the data your access token allows — and nothing else.",
+  "endpoint": {
+    "title": "Endpoint",
+    "description": "Point your MCP client at this URL. One endpoint covers every space and base your token can reach.",
+    "copy": "Copy endpoint"
+  },
+  "token": {
+    "title": "Access token",
+    "description": "MCP clients authenticate with a personal access token. Give it only the scopes the tools you plan to use require.",
+    "create": "Create a token",
+    "manage": "Manage tokens",
+    "hint": "The token is shown once, when you create it. Store it in your client configuration straight away."
+  },
+  "catalogue": {
+    "title": "Available tools",
+    "description": "What a connected client can do. Each tool is checked against your token's scopes and your own permissions on every call.",
+    "requiredScopes": "Required scopes",
+    "destructive": "Destructive",
+    "readOnly": "Read only",
+    "writesDisabled": "Writes are disabled on this instance (MCP_READONLY), so only read tools are listed.",
+    "group": {
+      "discovery": "Discovery",
+      "record": "Records",
+      "schema": "Schema"
+    }
+  },
+  "limits": {
+    "title": "Limits",
+    "maxRecords": "At most {{count}} records per query",
+    "maxDelete": "At most {{count}} records deleted per call"
+  },
+  "safety": {
+    "title": "What a client cannot do",
+    "description": "Fields and tables cannot be deleted, and field types cannot be converted, through MCP — those operations are irreversible. Deleted records and views go to the table trash and can be restored.",
+    "learnMore": "Deleted records can be restored from the table Trash panel."
+  },
+  "connect": {
+    "title": "Connect a client",
+    "claudeCode": "Claude Code",
+    "json": "Claude Desktop / Cursor",
+    "copy": "Copy",
+    "copied": "Copied"
+  }
+}

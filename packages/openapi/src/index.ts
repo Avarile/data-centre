@@ -41,6 +41,7 @@ export * from './template';
 export * from './query';
 export * from './automation';
 export * from './mail';
+export * from './mcp';
 export * from './formula';
 export * from './unsubscribe';
 export * from './base-node';

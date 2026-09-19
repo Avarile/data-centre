@@ -11,6 +11,7 @@ import { envValidationSchema } from './env.validation.schema';
 import { knowledgeConfig } from './knowledge.config';
 import { loggerConfig } from './logger.config';
 import { mailConfig } from './mail.config';
+import { mcpConfig } from './mcp.config';
 import { oauthConfig } from './oauth.config';
 import { storageConfig } from './storage';
 import { thresholdConfig } from './threshold.config';
@@ -28,6 +29,7 @@ const configurations = [
   oauthConfig,
   trashConfig,
   knowledgeConfig,
+  mcpConfig,
 ];
 
 @Module({})

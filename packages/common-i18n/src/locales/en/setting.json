@@ -1,5 +1,6 @@
 {
   "personalAccessToken": "Personal access tokens",
   "oauthApps": "OAuth Apps",
-  "plugins": "Plugins"
+  "plugins": "Plugins",
+  "mcp": "MCP Server"
 }
