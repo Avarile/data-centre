@@ -8,8 +8,15 @@ ARG BUILD_VERSION="1.0.0-alpha"
 
 FROM node:${NODE_VERSION}-bookworm AS deps
 ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME/bin:$PATH"
-RUN corepack enable && pnpm add npm-run-all2 zx -g
+ENV PATH="$PNPM_HOME:$PATH"
+# This RUN executes before any WORKDIR, so corepack sees no package.json and would
+# otherwise resolve `pnpm@latest`. Newer pnpm dropped bin/pnpm.cjs, which the corepack
+# bundled with Node 22.18.0 hardcodes, so `latest` fails with MODULE_NOT_FOUND.
+# Pin to the version in package.json `packageManager`, same as the runner stage below.
+ENV COREPACK_DEFAULT_TO_LATEST=0
+RUN corepack enable \
+    && corepack prepare pnpm@9.13.0 --activate \
+    && pnpm add npm-run-all2 zx -g
 
 # Disabling some well-known postinstall scripts
 ENV HUSKY=0
@@ -111,7 +118,7 @@ ENV TZ=UTC \
     NODE_ENV=production \
     PORT=${NEXTJS_APP_PORT} \
     NEXTJS_DIR=apps/nextjs-app \
-    PATH="$PNPM_HOME/bin:$PATH"
+    PATH="$PNPM_HOME:$PATH"
 
 RUN set -ex; \
         npm install zx -g; \
