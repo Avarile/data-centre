@@ -27,7 +27,7 @@ node_modules
 /.next/
 /out/
 /build
-/dist/
+/dist/*
 
 # v2 packages build output
 packages/v2/**/dist/
